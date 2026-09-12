@@ -1,0 +1,17 @@
+export const MostazaColors = {
+  rojo: '#A30002',
+  rojoOscuro: '#7A0002',
+  amarillo: '#FBB728',
+  amarilloOscuro: '#D4930A',
+  dark: '#0F172A',
+  cardBg: '#1E293B',
+  lightBg: '#F8FAFC',
+  white: '#FFFFFF',
+  border: '#334155',
+  textDark: '#0F172A',
+  textMuted: '#94A3B8',
+  green: '#10B981',
+  greenBg: '#064E3B',
+  orange: '#F59E0B',
+  orangeBg: '#78350F',
+};

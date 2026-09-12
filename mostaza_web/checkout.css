@@ -1,0 +1,691 @@
+/* ============================================================
+   checkout.css
+   Estilos premium para el Carrito y Checkout de Mostaza:
+   - Stepper y Layout en 2 columnas
+   - Modificadores y notas por producto
+   - Selector de Modalidad (Delivery, Take Away, En Mesa)
+   - Tarjeta de Crédito 3D interactiva
+   - Mercado Pago QR y Transferencia bancaria
+   - Resumen financiero con cupones y puntos Mostaza
+   ============================================================ */
+
+:root {
+  --rojo: #A30002;
+  --rojo-oscuro: #7A0002;
+  --rojo-claro: #FBEBEB;
+  --amarillo: #FBB728;
+  --amarillo-dark: #D4930A;
+  --crema: #FAF5EA;
+  --dark: #1F1F1F;
+  --gray-bg: #F8F9FA;
+  --border: #E5E7EB;
+  --radius: 16px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.checkout-page {
+  background: var(--gray-bg);
+  min-height: 85vh;
+  padding: 40px 20px 80px;
+}
+
+.checkout-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.checkout-header-title {
+  text-align: center;
+  margin-bottom: 30px;
+}
+.checkout-header-title h1 {
+  font-family: 'Playfair Display', serif;
+  color: var(--rojo);
+  font-size: 2.5rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+.checkout-header-title p {
+  color: #6B7280;
+  font-size: 1rem;
+}
+
+/* ---- Layout Grid ---- */
+.checkout-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 30px;
+  align-items: flex-start;
+}
+
+@media (max-width: 960px) {
+  .checkout-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Tarjetas Principales ---- */
+.card-section {
+  background: #ffffff;
+  border-radius: var(--radius);
+  padding: 26px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 24px;
+  border: 1px solid var(--border);
+}
+
+.card-section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--dark);
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--rojo-claro);
+}
+.card-section-title i {
+  color: var(--rojo);
+  font-size: 1.2rem;
+}
+
+/* ---- Items del Carrito ---- */
+.cart-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cart-item-card {
+  display: grid;
+  grid-template-columns: 80px 1fr auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  transition: all 0.2s ease;
+}
+.cart-item-card:hover {
+  border-color: #e0e0e0;
+  background: #fff;
+}
+
+.cart-item-thumb {
+  width: 80px;
+  height: 80px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #ffe8b3;
+}
+
+.cart-item-details h4 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--dark);
+  margin-bottom: 4px;
+}
+.cart-item-unit-price {
+  font-size: 0.85rem;
+  color: #6B7280;
+  margin-bottom: 6px;
+}
+.cart-item-note-input {
+  width: 100%;
+  font-size: 0.8rem;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  background: #fff;
+  color: #444;
+  outline: none;
+}
+.cart-item-note-input:focus {
+  border-color: var(--rojo);
+}
+
+/* Cantidad Stepper */
+.qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 50px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.qty-btn {
+  background: transparent;
+  border: none;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--rojo);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.qty-btn:hover {
+  background: var(--rojo-claro);
+}
+.qty-input {
+  width: 38px;
+  text-align: center;
+  font-weight: 700;
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  color: var(--dark);
+}
+
+.cart-item-subtotal {
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: var(--rojo);
+  min-width: 90px;
+  text-align: right;
+}
+
+.btn-remove-item {
+  background: none;
+  border: none;
+  color: #9CA3AF;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 6px;
+  transition: color 0.2s;
+}
+.btn-remove-item:hover {
+  color: var(--rojo);
+}
+
+@media (max-width: 600px) {
+  .cart-item-card {
+    grid-template-columns: 70px 1fr;
+    grid-template-rows: auto auto;
+  }
+  .cart-item-subtotal {
+    text-align: left;
+  }
+}
+
+/* ---- Modalidad de Entrega ---- */
+.delivery-options-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+@media (max-width: 600px) {
+  .delivery-options-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.delivery-opt-card {
+  border: 2px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 14px 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: #fff;
+}
+.delivery-opt-card:hover {
+  border-color: #CBD5E1;
+}
+.delivery-opt-card.selected {
+  border-color: var(--rojo);
+  background: var(--rojo-claro);
+}
+.delivery-opt-card i {
+  font-size: 1.6rem;
+  color: var(--rojo);
+  margin-bottom: 6px;
+  display: block;
+}
+.delivery-opt-card strong {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--dark);
+}
+.delivery-opt-card span {
+  font-size: 0.75rem;
+  color: #6B7280;
+}
+
+.delivery-form-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 600px) {
+  .delivery-form-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-group-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-group-custom label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #374151;
+}
+.form-group-custom input,
+.form-group-custom select,
+.form-group-custom textarea {
+  padding: 10px 14px;
+  border: 1px solid #D1D5DB;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  outline: none;
+  background: #fff;
+  transition: border-color 0.2s;
+}
+.form-group-custom input:focus,
+.form-group-custom select:focus,
+.form-group-custom textarea:focus {
+  border-color: var(--rojo);
+  box-shadow: 0 0 0 3px rgba(163, 0, 2, 0.1);
+}
+
+/* ---- Métodos de Pago ---- */
+.payment-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+@media (max-width: 700px) {
+  .payment-tabs {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.payment-tab-btn {
+  border: 2px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 12px 8px;
+  text-align: center;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.payment-tab-btn:hover {
+  border-color: #CBD5E1;
+}
+.payment-tab-btn.active {
+  border-color: var(--rojo);
+  background: #FFF5F5;
+}
+.payment-tab-btn i {
+  font-size: 1.4rem;
+  color: var(--rojo);
+  margin-bottom: 4px;
+  display: block;
+}
+.payment-tab-btn span {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--dark);
+}
+
+/* Vista Previa de Tarjeta 3D */
+.card-preview-wrap {
+  perspective: 1000px;
+  max-width: 360px;
+  margin: 0 auto 24px;
+  height: 200px;
+}
+.credit-card-3d {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 16px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+}
+.credit-card-3d.flipped {
+  transform: rotateY(180deg);
+}
+
+.card-face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  border-radius: 16px;
+  padding: 20px;
+  background: linear-gradient(135deg, #1f2937, #111827);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.card-face.card-back {
+  transform: rotateY(180deg);
+  padding: 20px 0;
+}
+
+.card-chip {
+  width: 45px;
+  height: 32px;
+  background: linear-gradient(135deg, #FFE082, #FFB300);
+  border-radius: 6px;
+}
+.card-brand-logo {
+  font-weight: 900;
+  font-size: 1.3rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #fff;
+}
+.card-number-display {
+  font-family: 'Courier New', monospace;
+  font-size: 1.3rem;
+  letter-spacing: 3px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  margin: 10px 0;
+}
+.card-footer-info {
+  display: flex;
+  justify-content: space-between;
+}
+.card-holder-name {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+.card-exp-date {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.card-black-bar {
+  background: #000;
+  height: 38px;
+  width: 100%;
+  margin-top: 10px;
+}
+.card-cvv-band {
+  background: #fff;
+  color: #000;
+  height: 32px;
+  margin: 15px 20px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-family: 'Courier New', monospace;
+  font-weight: 800;
+  font-size: 1rem;
+  border-radius: 4px;
+}
+
+/* Mercado Pago Box */
+.mp-box {
+  background: #f0f9ff;
+  border: 2px solid #009EE3;
+  border-radius: 14px;
+  padding: 22px;
+  text-align: center;
+}
+.mp-logo {
+  max-width: 160px;
+  margin-bottom: 12px;
+}
+.mp-qr-container {
+  background: #fff;
+  padding: 16px;
+  border-radius: 12px;
+  display: inline-block;
+  box-shadow: 0 4px 15px rgba(0, 158, 227, 0.15);
+  margin: 12px 0;
+}
+.mp-qr-container img {
+  width: 170px;
+  height: 170px;
+}
+
+/* Transferencia Box */
+.transfer-box {
+  background: #fdfbf7;
+  border: 2px dashed #D4930A;
+  border-radius: 14px;
+  padding: 20px;
+}
+.transfer-data-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0e6d2;
+  font-size: 0.95rem;
+}
+.transfer-data-row strong {
+  color: var(--dark);
+}
+.btn-copy {
+  background: #eee;
+  border: none;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  margin-left: 6px;
+}
+
+/* Efectivo Box */
+.cash-box {
+  background: #F0FDF4;
+  border: 2px solid #16A34A;
+  border-radius: 14px;
+  padding: 20px;
+}
+.quick-cash-options {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.btn-cash-quick {
+  background: #fff;
+  border: 1px solid #86EFAC;
+  padding: 8px 14px;
+  border-radius: 50px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #166534;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-cash-quick:hover {
+  background: #DCFCE7;
+}
+
+/* ---- Resumen de Compra (Sidebar Sticky) ---- */
+.checkout-summary-card {
+  position: sticky;
+  top: 90px;
+  background: #ffffff;
+  border-radius: var(--radius);
+  padding: 26px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  font-size: 0.95rem;
+  color: #4B5563;
+}
+.summary-row.total-row {
+  border-top: 2px dashed #E5E7EB;
+  margin-top: 14px;
+  padding-top: 16px;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--dark);
+}
+.summary-row.total-row strong {
+  color: var(--rojo);
+  font-size: 1.6rem;
+}
+
+/* Cupones */
+.coupon-input-group {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0;
+}
+.coupon-input-group input {
+  flex: 1;
+  text-transform: uppercase;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #D1D5DB;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.btn-apply-coupon {
+  background: var(--dark);
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-apply-coupon:hover {
+  background: #000;
+}
+
+.applied-coupon-tag {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #DCFCE7;
+  color: #166534;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.btn-remove-coupon {
+  background: none;
+  border: none;
+  color: #166534;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+/* Puntos Mostaza Box */
+.points-loyalty-box {
+  background: #FFFBEB;
+  border: 1px solid #FDE68A;
+  border-radius: 12px;
+  padding: 14px;
+  margin: 14px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.points-loyalty-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.points-loyalty-info i {
+  font-size: 1.4rem;
+  color: #D97706;
+}
+
+/* Botón Finalizar Pago */
+.btn-submit-order {
+  width: 100%;
+  background: linear-gradient(135deg, var(--rojo), #8B0000);
+  color: #ffffff;
+  border: none;
+  padding: 18px 24px;
+  border-radius: 50px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(163, 0, 2, 0.35);
+  transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+.btn-submit-order:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 25px rgba(163, 0, 2, 0.45);
+  background: linear-gradient(135deg, #7A0002, #580000);
+}
+.btn-submit-order:active {
+  transform: translateY(0);
+}
+
+/* Propina Selector */
+.tip-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 10px 0;
+}
+.btn-tip-pill {
+  border: 1px solid #D1D5DB;
+  background: #fff;
+  border-radius: 50px;
+  padding: 6px 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--dark);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-tip-pill:hover {
+  background: #f3f4f6;
+}
+.btn-tip-pill.active {
+  background: var(--amarillo);
+  border-color: var(--amarillo-dark);
+  color: #000;
+}
+
+/* Badges de Estado */
+.order-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 50px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.badge-recibido { background: #E0F2FE; color: #0369A1; }
+.badge-cocina { background: #FEF3C7; color: #B45309; }
+.badge-camino { background: #EDE9FE; color: #6D28D9; }
+.badge-entregado { background: #DCFCE7; color: #15803D; }
+.badge-cancelado { background: #FEE2E2; color: #B91C1C; }
