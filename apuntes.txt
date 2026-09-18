@@ -1,0 +1,47 @@
+src/
+├── components/     <-- Botones, Tarjetas de Recetas, Encabezados...
+├── screens/        <-- Pantallas (Inicio, ListaRecetas, DetalleReceta...)
+├── navigation/     <-- Rutas y menúes de la app
+├── assets/         <-- Imágenes, fuentes personalizadas, logos...
+└── services/       <-- Conexiones a APIs o bases de datos (p. ej. Firebase)
+
+
+//// esta es la estructura de las carpetas
+
+Después de mover el proyecto, borrá node_modules, android/build, android/app/build yin android/.gradle (o cualquier carpeta .cxx dentro de node_modules), y reinstalá dependencias con npm install o yarn.
+
+Corré de nuevo npx expo run:android (o el comando que uses). Sin OneDrive de por medio, Gradle debería poder leer el libc++_shared.so como archivo regular sin problemas.
+
+Excluí esa carpeta específica de la sincronización de OneDrive (click derecho sobre la carpeta > 'Liberar espacio' no sirve, necesitás pausar la sincronización de esa carpeta o mover node_modules a un symlink fuera de OneDrive) o pausá OneDrive mientras compilás.
+
+npx create-expo-app@latest mi-app
+
+npm init expo@latest mi-app -- --template blank
+
+npx expo run:android
+
+npm/npx run reset-project // refresh app
+
+npm run reset-project
+
+npx expo install expo-image
+
+
+
+// export default function AppTabs() {
+//   return (
+//     <Tabs>
+//       <TabSlot style={{ height: '100%' }} />
+//       <TabList asChild>
+//         <CustomTabList>
+//           <TabTrigger name="home" href="/" asChild>
+//             <TabButton>Home</TabButton>
+//           </TabTrigger>
+//           <TabTrigger name="explore" href="/explore" asChild>
+//             <TabButton>Explore</TabButton>
+//           </TabTrigger>
+//         </CustomTabList>
+//       </TabList>
+//     </Tabs>
+//   );
+// }

@@ -1,0 +1,44 @@
+para contraseñas no encriptadas (que al pedo)
+
+if ($data->password === $empleado['password']) {
+    http_response_code(200);
+    echo json_encode([
+        "status" => "success",
+        "message" => "Inicio de sesión correcto",
+        "token" => bin2hex(random_bytes(16)),
+        "empleado" => [
+            "idempleado" => $empleado['idempleado'],
+            "nombre"     => $empleado['nombre'],
+            "apellido"   => $empleado['apellido'],
+            "dni"        => $empleado['dni'],
+            "id_rol"     => $empleado['fk_id_rol'],
+            "id_turno"   => $empleado['fk_id_turno']
+        ]
+    ]);
+} else {
+    http_response_code(401);
+    echo json_encode(["status" => "error", "message" => "Contraseña incorrecta"]);
+}
+
+para contraseñas encriptadas (gordo de mierda)
+
+if (password_verify($data->password, $empleado['password'])) {
+        http_response_code(200);
+        echo json_encode([
+            "status" => "success",
+            "message" => "Inicio de sesión correcto",
+            "token" => bin2hex(random_bytes(16)),
+            "empleado" => [
+                "idempleado" => $empleado['idempleado'],
+                "nombre"     => $empleado['nombre'],
+                "apellido"   => $empleado['apellido'],
+                "dni"        => $empleado['dni'],
+                "id_rol"     => $empleado['fk_id_rol'],
+                "id_turno"   => $empleado['fk_id_turno']
+                
+            ]
+        ]);
+    } else {
+        http_response_code(401);
+        echo json_encode(["status" => "error", "message" => "Contraseña incorrecta"]);
+    }
