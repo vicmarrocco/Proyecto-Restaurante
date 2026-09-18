@@ -18,6 +18,7 @@ $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
 $idpedido = intval($input['idpedido'] ?? 0);
 $nuevoEstado = trim($input['nuevo_estado'] ?? '');
 $repartidor = trim($input['repartidor'] ?? 'Repartidor Mostaza');
+$idEmpleado = !empty($input['idempleado']) ? intval($input['idempleado']) : (!empty($input['repartidor_id']) ? intval($input['repartidor_id']) : null);
 
 if ($idpedido <= 0 || empty($nuevoEstado)) {
     echo json_encode(['ok' => false, 'error' => 'Datos incompletos para actualizar el pedido.']);
@@ -33,31 +34,37 @@ if (!in_array($nuevoEstado, $estadosPermitidos)) {
 $motivoCancelacion = trim($input['motivo_cancelacion'] ?? 'Imposibilidad de entrega por delivery');
 
 try {
-    if ($nuevoEstado === 'En Camino') {
-        $stmt = $conn->prepare("UPDATE pedido_web SET estado = ?, repartidor_asignado = ? WHERE idpedido = ?");
-        $stmt->bind_param("ssi", $nuevoEstado, $repartidor, $idpedido);
-    } elseif ($nuevoEstado === 'Cancelado') {
-        $canceladoPor = "Delivery ($repartidor)";
-        $stmt = $conn->prepare("UPDATE pedido_web SET estado = ?, motivo_cancelacion = ?, cancelado_por = ? WHERE idpedido = ?");
-        $stmt->bind_param("sssi", $nuevoEstado, $motivoCancelacion, $canceladoPor, $idpedido);
-    } else {
-        $stmt = $conn->prepare("UPDATE pedido_web SET estado = ? WHERE idpedido = ?");
-        $stmt->bind_param("si", $nuevoEstado, $idpedido);
-    }
-    
-    $stmt->execute();
+    $accionAudit = "Actualización de Delivery a $nuevoEstado";
+    $detallesAudit = "Gestión por Repartidor Oficial: $repartidor";
 
-    if ($stmt->affected_rows >= 0) {
-        echo json_encode([
-            'ok' => true,
-            'mensaje' => "Pedido #$idpedido actualizado a '$nuevoEstado' correctamente.",
-            'idpedido' => $idpedido,
-            'estado' => $nuevoEstado,
-            'repartidor' => $repartidor
-        ]);
-    } else {
-        echo json_encode(['ok' => false, 'error' => 'No se encontró el pedido o no hubo cambios.']);
+    if ($nuevoEstado === 'En Camino') {
+        $accionAudit = "Despachado y en Viaje a Domicilio";
+        $detallesAudit = "El repartidor $repartidor retiró el pedido y se dirige al domicilio del cliente.";
+    } elseif ($nuevoEstado === 'Entregado') {
+        $accionAudit = "Entrega Finalizada en Puerta";
+        $detallesAudit = "Pedido entregado con éxito por $repartidor.";
+
+        // Incrementar viajes completados en empleado
+        if ($idEmpleado) {
+            $conn->query("UPDATE empleado SET viajes_totales = viajes_totales + 1 WHERE idempleado = $idEmpleado");
+        } else {
+            $conn->query("UPDATE empleado SET viajes_totales = viajes_totales + 1 WHERE CONCAT(nombre, ' ', apellido) = '" . $conn->real_escape_string($repartidor) . "'");
+        }
+    } elseif ($nuevoEstado === 'Cancelado') {
+        $accionAudit = "Cancelación por Delivery";
+        $detallesAudit = $motivoCancelacion;
     }
+
+    // Registrar en auditoría central (actualiza pedido_auditoria e hitos en pedido_web)
+    registrarAuditoriaPedido($conn, $idpedido, $nuevoEstado, $accionAudit, 'Repartidor', $repartidor, $idEmpleado, $detallesAudit);
+
+    echo json_encode([
+        'ok' => true,
+        'mensaje' => "Pedido #$idpedido actualizado a '$nuevoEstado' por $repartidor correctamente.",
+        'idpedido' => $idpedido,
+        'estado' => $nuevoEstado,
+        'repartidor' => $repartidor
+    ]);
 
 } catch (Exception $e) {
     echo json_encode([

@@ -2,7 +2,7 @@
 import json
 import urllib.request
 import urllib.parse
-from config import API_BASE_URLS
+from config import API_BASE_URLS, TERMINAL_NUMERO, TERMINAL_NOMBRE
 
 class APIClient:
     def __init__(self):
@@ -62,19 +62,19 @@ class APIClient:
     # MÉTODOS DE AUTENTICACIÓN Y CONTROL DE TURNOS
     # ------------------------------------------------------------
     def solicitar_codigo_gmail(self, email):
-        """Envía el código de 6 dígitos por Gmail al empleado."""
-        return self._post("/auth/solicitar_codigo.php", {"email": email})
+        """Envía el código de 6 dígitos por Gmail al empleado validando rol de Cajero."""
+        return self._post("/auth/solicitar_codigo.php", {"email": email, "app": "cajero"})
 
     def verificar_codigo_gmail(self, email, codigo):
         """Valida el código de 6 dígitos, registra la entrada y devuelve datos del turno."""
-        return self._post("/auth/verificar_codigo.php", {"email": email, "codigo": codigo})
+        return self._post("/auth/verificar_codigo.php", {"email": email, "codigo": codigo, "app": "cajero"})
 
     def cerrar_turno(self, idempleado, idregistro_turno=None, observaciones=""):
         """Registra la hora de salida y finaliza el turno del empleado."""
         payload = {
             "idempleado": idempleado,
             "idregistro_turno": idregistro_turno,
-            "observaciones": observaciones or "Turno finalizado desde App Cajero"
+            "observaciones": observaciones or f"Turno finalizado desde {TERMINAL_NOMBRE}"
         }
         return self._post("/auth/cerrar_turno.php", payload)
 
@@ -92,6 +92,10 @@ class APIClient:
 
     def crear_venta(self, payload):
         """Registra y cobra una venta desde la terminal POS."""
+        if "numero_caja" not in payload:
+            payload["numero_caja"] = TERMINAL_NUMERO
+        if "terminal_nombre" not in payload:
+            payload["terminal_nombre"] = TERMINAL_NOMBRE
         return self._post("/pos/crear_venta.php", payload)
 
     def obtener_mesas(self):
@@ -116,26 +120,54 @@ class APIClient:
         """Cancela una orden activa registrando el motivo en el sistema (R21)."""
         payload = {
             "idpedido": idpedido,
-            "motivo": motivo or "Cancelado desde terminal POS",
+            "motivo": motivo or f"Cancelado desde {TERMINAL_NOMBRE}",
             "cancelado_por": cancelado_por
         }
         return self._post("/pos/pedidos.php", payload)
 
     # ------------------------------------------------------------
-    # MÉTODOS DE CAJA Y ARQUEO
+    # MÉTODOS DE CAJA Y ARQUEO MULTI-TERMINAL
     # ------------------------------------------------------------
-    def obtener_estado_caja(self):
-        """Obtiene el estado de la caja registradora activa."""
-        return self._get("/caja/estado.php")
+    def obtener_estado_caja(self, numero_caja=None):
+        """Obtiene el estado de la caja registradora activa de esta terminal."""
+        caja_num = numero_caja if numero_caja is not None else TERMINAL_NUMERO
+        return self._get("/caja/estado.php", {"numero_caja": caja_num})
 
     def movimiento_caja(self, accion, payload):
-        """Abre o cierra turnos de caja y registra el arqueo físico."""
-        data = {"accion": accion, **payload}
+        """Abre o cierra turnos de caja, registra arqueo físico y sangrías."""
+        data = {
+            "accion": accion,
+            "numero_caja": TERMINAL_NUMERO,
+            "terminal_nombre": TERMINAL_NOMBRE,
+            **payload
+        }
         return self._post("/caja/movimiento.php", data)
 
-    def obtener_historial_cajas(self, limite=30):
+    def registrar_retiro_seguridad(self, monto, motivo="", idarqueo=None, cajero="", idempleado=None):
+        """Registra una sangría / retiro de seguridad de la gaveta hacia tesorería."""
+        payload = {
+            "monto": monto,
+            "motivo": motivo or "Retiro de seguridad / Excedente a caja fuerte",
+            "idarqueo": idarqueo,
+            "cajero": cajero,
+            "idempleado": idempleado
+        }
+        return self.movimiento_caja("retiro_efectivo", payload)
+
+    def cierre_x(self, idarqueo=None):
+        """Genera un Arqueo Parcial Ciego (Cierre X) sin bloquear la caja."""
+        return self.movimiento_caja("cierre_x", {"idarqueo": idarqueo} if idarqueo else {})
+
+    def obtener_informe_cierre(self, idarqueo):
+        """Obtiene el informe oficial de cierre fiscal Z de un arqueo."""
+        return self._get("/caja/movimiento.php", {"accion": "informe_cierre", "idarqueo": idarqueo})
+
+    def obtener_historial_cajas(self, limite=30, numero_caja=None):
         """Obtiene el historial de turnos y arqueos de caja."""
-        return self._get("/caja/historial.php", {"limite": limite})
+        params = {"limite": limite}
+        if numero_caja is not None:
+            params["numero_caja"] = numero_caja
+        return self._get("/caja/historial.php", params)
 
     # ------------------------------------------------------------
     # CLIENTES Y CLUB MOSTAZA

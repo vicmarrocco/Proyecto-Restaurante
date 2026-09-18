@@ -14,16 +14,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once(__DIR__ . '/../../conexion.php');
 
-$filtro = $_GET['filtro'] ?? 'todos'; // 'pendientes', 'en_camino', 'entregados', 'todos'
+$filtro = $_GET['filtro'] ?? 'todos'; // 'pendientes', 'en_camino', 'entregados', 'historial', 'todos'
 $repartidor = trim($_GET['repartidor'] ?? '');
+$rango = trim($_GET['rango'] ?? 'hoy'); // 'hoy', 'semana', 'todo'
+$metodoPago = trim($_GET['metodo_pago'] ?? '');
+$sucursalFiltro = trim($_GET['sucursal'] ?? ($_GET['area'] ?? ''));
 
 try {
     $where = ["tipo_entrega = 'delivery'"];
     $params = [];
     $types = "";
 
+    if (!empty($sucursalFiltro) && $sucursalFiltro !== 'todas') {
+        $where[] = "p.sucursal LIKE ?";
+        $params[] = '%' . $sucursalFiltro . '%';
+        $types .= "s";
+    }
+
     if ($filtro === 'pendientes') {
-        $where[] = "estado IN ('Recibido', 'En Preparación', 'Listo para Despacho')";
+        $where[] = "estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'En Preparación', 'Listo', 'Listo para Despacho')";
     } elseif ($filtro === 'en_camino') {
         $where[] = "estado = 'En Camino'";
         if (!empty($repartidor)) {
@@ -31,13 +40,24 @@ try {
             $params[] = $repartidor;
             $types .= "s";
         }
-    } elseif ($filtro === 'entregados') {
-        $where[] = "estado = 'Entregado' AND DATE(fecha) = CURDATE()";
+    } elseif ($filtro === 'entregados' || $filtro === 'historial') {
+        $where[] = "estado IN ('Entregado', 'Cancelado')";
+        if ($rango === 'hoy') {
+            $where[] = "DATE(p.fecha) = CURDATE()";
+        } elseif ($rango === 'semana') {
+            $where[] = "p.fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+        }
         if (!empty($repartidor)) {
-            $where[] = "repartidor_asignado = ?";
+            $where[] = "(repartidor_asignado = ? OR repartidor_asignado IS NULL OR repartidor_asignado = '')";
             $params[] = $repartidor;
             $types .= "s";
         }
+    }
+
+    if ($metodoPago === 'efectivo') {
+        $where[] = "p.metodo_pago = 'efectivo'";
+    } elseif ($metodoPago === 'online') {
+        $where[] = "p.metodo_pago != 'efectivo'";
     }
 
     $whereSql = implode(" AND ", $where);
@@ -63,6 +83,21 @@ try {
     }
     $stmt->execute();
     $res = $stmt->get_result();
+
+    // Cargar mapa de sucursales activas para vincular con la orden
+    $sucursalesMap = [];
+    $rSuc = $conn->query("SELECT nombre, direccion, ciudad, latitud, longitud FROM sucursal WHERE activo = 1");
+    if ($rSuc) {
+        while ($sRow = $rSuc->fetch_assoc()) {
+            $sucursalesMap[$sRow['nombre']] = [
+                'nombre' => $sRow['nombre'],
+                'direccion' => $sRow['direccion'],
+                'ciudad' => $sRow['ciudad'],
+                'lat' => floatval($sRow['latitud']),
+                'lng' => floatval($sRow['longitud'])
+            ];
+        }
+    }
 
     $pedidos = [];
     while ($p = $res->fetch_assoc()) {
@@ -95,9 +130,12 @@ try {
         $latCliente = !empty($p['latitud']) ? floatval($p['latitud']) : null;
         $lngCliente = !empty($p['longitud']) ? floatval($p['longitud']) : null;
         
-        $sucursalLat = defined('SUCURSAL_LAT') ? floatval(SUCURSAL_LAT) : -26.185200;
-        $sucursalLng = defined('SUCURSAL_LNG') ? floatval(SUCURSAL_LNG) : -58.175600;
-        $sucursalDir = defined('SUCURSAL_DIRECCION') ? SUCURSAL_DIRECCION : 'Mostaza Formosa Centro (Av. 25 de Mayo 150)';
+        $sucursalNombre = !empty($p['sucursal']) ? $p['sucursal'] : 'Mostaza Formosa Centro';
+        $sucursalInfo = $sucursalesMap[$sucursalNombre] ?? null;
+
+        $sucursalLat = $sucursalInfo ? $sucursalInfo['lat'] : (defined('SUCURSAL_LAT') ? floatval(SUCURSAL_LAT) : -26.185200);
+        $sucursalLng = $sucursalInfo ? $sucursalInfo['lng'] : (defined('SUCURSAL_LNG') ? floatval(SUCURSAL_LNG) : -58.175600);
+        $sucursalDir = $sucursalInfo ? $sucursalInfo['direccion'] : (defined('SUCURSAL_DIRECCION') ? SUCURSAL_DIRECCION : 'Av. 25 de Mayo 150');
 
         $distanciaKm = null;
         $tiempoEstimadoMin = 15;
@@ -123,7 +161,7 @@ try {
             'referencia_entrega' => $p['referencia_entrega'] ?: '',
             'latitud' => $latCliente,
             'longitud' => $lngCliente,
-            'sucursal_nombre' => 'Mostaza Formosa Centro',
+            'sucursal_nombre' => $sucursalNombre,
             'sucursal_direccion' => $sucursalDir,
             'sucursal_lat' => $sucursalLat,
             'sucursal_lng' => $sucursalLng,

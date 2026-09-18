@@ -35,7 +35,11 @@ $stmtDet->execute();
 $detalles = $stmtDet->get_result()->fetch_all(MYSQLI_ASSOC);
 
 // Mapeo de Estados para la Barra de Progreso
-$estado = $pedido['estado'] ?? 'Recibido';
+$estado = trim($pedido['estado'] ?? 'Recibido');
+$tipoEntrega = $pedido['tipo_entrega'] ?? 'delivery';
+$repartidor = trim($pedido['repartidor_asignado'] ?? '');
+$mesa = $pedido['numero_mesa'];
+
 $stepIndex = 1;
 $porcentajeFill = '15%';
 
@@ -43,17 +47,35 @@ if ($estado === 'Recibido') {
     $stepIndex = 1;
     $porcentajeFill = '15%';
     $statusTitle = '¡Tu pedido fue recibido!';
-    $statusDesc = 'El local ya tiene tu orden y está a punto de comenzar a prepararla.';
-} elseif ($estado === 'En Cocina' || $estado === 'En Preparacion') {
+    $statusDesc = 'El local ya tiene tu orden y está a punto de comenzar a prepararla en cocina.';
+} elseif (in_array($estado, ['En Cocina', 'En Preparacion', 'En Preparación', 'Preparando'])) {
     $stepIndex = 2;
     $porcentajeFill = '48%';
     $statusTitle = '¡Marchando en Cocina!';
     $statusDesc = 'Nuestros parrilleros están preparando tus hamburguesas con la mejor calidad Mostaza.';
-} elseif ($estado === 'En Camino' || $estado === 'Listo') {
+} elseif (in_array($estado, ['Listo', 'Listo para Despacho'])) {
+    if ($tipoEntrega === 'delivery') {
+        $stepIndex = 2;
+        $porcentajeFill = '60%';
+        $statusTitle = '¡Listo en Cocina! Esperando salida del repartidor';
+        $statusDesc = 'Tu pedido ya salió de la parrilla y está empaquetado para que el repartidor inicie el viaje.';
+    } else {
+        $stepIndex = 3;
+        $porcentajeFill = '78%';
+        if ($tipoEntrega === 'salon') {
+            $statusTitle = '¡Tu comanda está lista!';
+            $statusDesc = !empty($mesa) ? "Tu pedido está listo y servido en la Mesa #$mesa." : "Tu pedido está listo para retirar en el salón.";
+        } else {
+            $statusTitle = '¡Tu pedido está listo para retirar!';
+            $statusDesc = 'Podés acercarte al mostrador con tu número de comanda para retirarlo.';
+        }
+    }
+} elseif ($estado === 'En Camino') {
     $stepIndex = 3;
     $porcentajeFill = '78%';
-    $statusTitle = ($pedido['tipo_entrega'] === 'delivery') ? '¡El repartidor va en camino!' : '¡Tu pedido está listo para retirar!';
-    $statusDesc = ($pedido['tipo_entrega'] === 'delivery') ? 'El delivery salió del local y se dirige a tu domicilio.' : 'Podés acercarte al mostrador a retirar tu comanda.';
+    $statusTitle = '¡El repartidor va en camino!';
+    $nomRep = !empty($repartidor) ? "El repartidor <strong>" . htmlspecialchars($repartidor) . "</strong>" : "El repartidor";
+    $statusDesc = "$nomRep salió del local y se dirige a tu domicilio.";
 } elseif ($estado === 'Entregado') {
     $stepIndex = 4;
     $porcentajeFill = '100%';
@@ -72,12 +94,16 @@ if ($estado === 'Recibido') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pedido Confirmado #<?= $pedido['idpedido'] ?> · Mostaza</title>
-<link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="tienda.css">
-<link rel="stylesheet" href="checkout.css">
+<!-- Base Framework (Bootstrap) -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<!-- Google Fonts & Font Awesome -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<!-- Estilos Oficiales Mostaza (Sobrescriben Bootstrap) -->
+<link rel="stylesheet" href="style.css?v=<?= filemtime('style.css') ?>">
+<link rel="stylesheet" href="tienda.css?v=<?= filemtime('tienda.css') ?>">
+<link rel="stylesheet" href="checkout.css?v=<?= filemtime('checkout.css') ?>">
 <!-- Leaflet Map para Seguimiento en Vivo -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -97,8 +123,7 @@ if ($estado === 'Recibido') {
     position: relative;
     margin: 30px 10px 10px;
 }
-.tracking-progress-bar::before {
-    content: '';
+.tracking-line-track {
     position: absolute;
     top: 24px;
     left: 40px;
@@ -106,15 +131,14 @@ if ($estado === 'Recibido') {
     height: 6px;
     background: #E5E7EB;
     z-index: 1;
+    border-radius: 3px;
+    overflow: hidden;
 }
 .tracking-progress-fill {
-    position: absolute;
-    top: 24px;
-    left: 40px;
-    height: 6px;
+    height: 100%;
     background: linear-gradient(90deg, #16A34A, #22C55E);
-    z-index: 2;
     transition: width 0.6s ease;
+    border-radius: 3px;
     width: <?= $porcentajeFill ?>;
 }
 .tracking-step {
@@ -212,42 +236,44 @@ if ($estado === 'Recibido') {
         </h3>
 
         <div class="tracking-progress-bar">
-            <div class="tracking-progress-fill"></div>
+            <div class="tracking-line-track">
+                <div class="tracking-progress-fill" id="trackingProgressFill" style="width: <?= $porcentajeFill ?>;"></div>
+            </div>
 
-            <div class="tracking-step <?= ($stepIndex >= 1) ? ($stepIndex == 1 ? 'active' : 'completed') : '' ?>">
+            <div class="tracking-step <?= ($stepIndex >= 1) ? (($stepIndex == 1 && $stepIndex < 4) ? 'active' : 'completed') : '' ?>" id="stepTrack1">
                 <div class="step-icon-circle">
                     <i class="fa-solid <?= ($stepIndex > 1) ? 'fa-check' : 'fa-receipt' ?>"></i>
                 </div>
                 <div class="step-label">Recibido</div>
             </div>
 
-            <div class="tracking-step <?= ($stepIndex >= 2) ? ($stepIndex == 2 ? 'active' : 'completed') : '' ?>">
+            <div class="tracking-step <?= ($stepIndex >= 2) ? (($stepIndex == 2 && $stepIndex < 4) ? 'active' : 'completed') : '' ?>" id="stepTrack2">
                 <div class="step-icon-circle">
                     <i class="fa-solid <?= ($stepIndex > 2) ? 'fa-check' : 'fa-fire-burner' ?>"></i>
                 </div>
                 <div class="step-label">En Cocina</div>
             </div>
 
-            <div class="tracking-step <?= ($stepIndex >= 3) ? ($stepIndex == 3 ? 'active' : 'completed') : '' ?>">
+            <div class="tracking-step <?= ($stepIndex >= 3) ? (($stepIndex == 3 && $stepIndex < 4) ? 'active' : 'completed') : '' ?>" id="stepTrack3">
                 <div class="step-icon-circle">
                     <i class="fa-solid <?= ($stepIndex > 3) ? 'fa-check' : (($pedido['tipo_entrega'] === 'delivery') ? 'fa-motorcycle' : 'fa-bag-shopping') ?>"></i>
                 </div>
-                <div class="step-label"><?= ($pedido['tipo_entrega'] === 'delivery') ? 'En Camino' : 'Listo' ?></div>
+                <div class="step-label" id="stepTrackLabel3"><?= ($pedido['tipo_entrega'] === 'delivery') ? 'En Camino' : 'Listo' ?></div>
             </div>
 
-            <div class="tracking-step <?= ($stepIndex >= 4) ? 'completed active' : '' ?>">
+            <div class="tracking-step <?= ($stepIndex >= 4) ? 'completed' : '' ?>" id="stepTrack4">
                 <div class="step-icon-circle">
-                    <i class="fa-solid fa-house-chimney"></i>
+                    <i class="fa-solid <?= ($stepIndex >= 4) ? 'fa-check' : 'fa-house-chimney' ?>"></i>
                 </div>
                 <div class="step-label">Entregado</div>
             </div>
         </div>
 
-        <div class="tracking-live-box">
-            <i class="fa-solid fa-bell"></i>
+        <div class="tracking-live-box" id="trackingLiveBox">
+            <i class="fa-solid fa-bell" id="trackingLiveIcon"></i>
             <div>
-                <strong style="color:#92400E;display:block;font-size:1.05rem;"><?= $statusTitle ?></strong>
-                <span style="color:#B45309;font-size:0.9rem;"><?= $statusDesc ?></span>
+                <strong style="color:#92400E;display:block;font-size:1.05rem;" id="trackingStatusTitle"><?= $statusTitle ?></strong>
+                <span style="color:#B45309;font-size:0.9rem;" id="trackingStatusDesc"><?= $statusDesc ?></span>
             </div>
         </div>
 
@@ -290,6 +316,9 @@ if ($estado === 'Recibido') {
                         <?php if (!empty($pedido['referencia_entrega'])): ?>
                             <br><small style="color:#666;">(Ref: <?= htmlspecialchars($pedido['referencia_entrega']) ?>)</small>
                         <?php endif; ?>
+                        <div style="margin-top:6px;color:#991B1B;font-weight:700;">
+                            <i class="fa-solid fa-store"></i> Sucursal asignada por cercanía: <span style="color:#111827;"><?= htmlspecialchars($pedido['sucursal'] ?: 'Mostaza Formosa Centro') ?></span>
+                        </div>
                     </div>
                 <?php elseif ($pedido['tipo_entrega'] === 'salon'): ?>
                     <div>
@@ -352,10 +381,22 @@ if ($estado === 'Recibido') {
 <?php include('includes/footer.php'); ?>
 
 <?php if ($pedido['tipo_entrega'] === 'delivery' && !empty($pedido['latitud']) && !empty($pedido['longitud'])): ?>
+<?php
+// Buscar coordenadas y dirección real de la sucursal asignada por cercanía
+$sucursalNombre = !empty($pedido['sucursal']) ? $pedido['sucursal'] : 'Mostaza Formosa Centro';
+$stmtSucInfo = $conn->prepare("SELECT latitud, longitud, direccion, ciudad FROM sucursal WHERE nombre = ? LIMIT 1");
+$stmtSucInfo->bind_param("s", $sucursalNombre);
+$stmtSucInfo->execute();
+$infoSuc = $stmtSucInfo->get_result()->fetch_assoc();
+
+$sucursalLat = !empty($infoSuc['latitud']) ? floatval($infoSuc['latitud']) : SUCURSAL_LAT;
+$sucursalLng = !empty($infoSuc['longitud']) ? floatval($infoSuc['longitud']) : SUCURSAL_LNG;
+$sucursalDir = !empty($infoSuc['direccion']) ? $infoSuc['direccion'] : 'Av. 25 de Mayo 150';
+?>
 <script>
 window.addEventListener('DOMContentLoaded', () => {
-    const sucursalLat = <?= SUCURSAL_LAT ?>;
-    const sucursalLng = <?= SUCURSAL_LNG ?>;
+    const sucursalLat = <?= $sucursalLat ?>;
+    const sucursalLng = <?= $sucursalLng ?>;
     const clienteLat = <?= floatval($pedido['latitud']) ?>;
     const clienteLng = <?= floatval($pedido['longitud']) ?>;
 
@@ -379,8 +420,8 @@ window.addEventListener('DOMContentLoaded', () => {
         iconAnchor: [12, 41]
     });
 
-    const m1 = L.marker([sucursalLat, sucursalLng], { icon: storeIcon }).addTo(map).bindPopup("<b>🍔 Mostaza Formosa Centro</b><br>Punto de Despacho (Av. 25 de Mayo 150)");
-    const m2 = L.marker([clienteLat, clienteLng], { icon: clientIcon }).addTo(map).bindPopup("<b>📍 Tu Domicilio</b><br><?= htmlspecialchars($pedido['direccion_envio']) ?>").openPopup();
+    const m1 = L.marker([sucursalLat, sucursalLng], { icon: storeIcon }).addTo(map).bindPopup("<b>🍔 <?= addslashes($sucursalNombre) ?></b><br>Punto de Despacho Asignado (<?= addslashes($sucursalDir) ?>)");
+    const m2 = L.marker([clienteLat, clienteLng], { icon: clientIcon }).addTo(map).bindPopup("<b>📍 Tu Domicilio</b><br><?= addslashes($pedido['direccion_envio']) ?>").openPopup();
 
     const polyline = L.polyline([[sucursalLat, sucursalLng], [clienteLat, clienteLng]], {
         color: '#A30002',
@@ -393,6 +434,112 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 <?php endif; ?>
+
+<script>
+// ------------------------------------------------------------
+// Polling en Vivo del Estado del Pedido (Sincronizado con Cocina y Repartidor)
+// ------------------------------------------------------------
+let currentOrderStep = <?= $stepIndex ?>;
+let orderPollingInterval = null;
+
+function consultarEstadoPedidoEnVivo() {
+    const idpedido = <?= $pedido['idpedido'] ?>;
+    fetch('tracking_estado_ajax.php?id=' + idpedido)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.ok) return;
+
+            const paso = data.paso;
+            const porcentaje = data.porcentajeFill;
+            const titulo = data.titulo;
+            const desc = data.descripcion;
+            const tipoEntrega = data.tipo_entrega;
+            const estadoActual = data.estado;
+
+            // Actualizar textos informativos
+            const elTitle = document.getElementById('trackingStatusTitle');
+            const elDesc = document.getElementById('trackingStatusDesc');
+            const elLiveBox = document.getElementById('trackingLiveBox');
+            const elLiveIcon = document.getElementById('trackingLiveIcon');
+
+            if (elTitle) elTitle.innerHTML = titulo;
+            if (elDesc) elDesc.innerHTML = desc;
+
+            // Actualizar estilo si está entregado o cancelado
+            if (data.es_cancelado) {
+                if (elLiveBox) {
+                    elLiveBox.style.background = '#FEF2F2';
+                    elLiveBox.style.borderColor = '#FCA5A5';
+                }
+                if (elTitle) elTitle.style.color = '#991B1B';
+                if (elDesc) elDesc.style.color = '#B91C1C';
+                if (elLiveIcon) {
+                    elLiveIcon.className = 'fa-solid fa-triangle-exclamation';
+                    elLiveIcon.style.color = '#DC2626';
+                }
+            } else if (estadoActual === 'Entregado') {
+                if (elLiveBox) {
+                    elLiveBox.style.background = '#F0FDF4';
+                    elLiveBox.style.borderColor = '#BBF7D0';
+                }
+                if (elTitle) elTitle.style.color = '#15803D';
+                if (elDesc) elDesc.style.color = '#166534';
+                if (elLiveIcon) {
+                    elLiveIcon.className = 'fa-solid fa-circle-check';
+                    elLiveIcon.style.color = '#16A34A';
+                }
+            }
+
+            // Actualizar barra de progreso
+            const elFill = document.getElementById('trackingProgressFill');
+            if (elFill) elFill.style.width = porcentaje;
+
+            // Actualizar steps visuales
+            [1, 2, 3, 4].forEach(i => {
+                const elStep = document.getElementById('stepTrack' + i);
+                if (!elStep) return;
+
+                const circle = elStep.querySelector('.step-icon-circle');
+                const icon = circle ? circle.querySelector('i') : null;
+
+                elStep.classList.remove('active', 'completed');
+
+                if (paso >= 4 || estadoActual === 'Entregado') {
+                    // Cuando el pedido está entregado, TODOS los pasos quedan completados con el mismo ícono verde
+                    elStep.classList.add('completed');
+                    if (icon) icon.className = 'fa-solid fa-check';
+                } else if (paso > i) {
+                    elStep.classList.add('completed');
+                    if (icon) icon.className = 'fa-solid fa-check';
+                } else if (paso === i) {
+                    elStep.classList.add('active');
+                    if (icon) {
+                        if (i === 1) icon.className = 'fa-solid fa-receipt';
+                        else if (i === 2) icon.className = 'fa-solid fa-fire-burner';
+                        else if (i === 3) icon.className = (tipoEntrega === 'delivery') ? 'fa-solid fa-motorcycle' : 'fa-solid fa-bag-shopping';
+                        else if (i === 4) icon.className = 'fa-solid fa-house-chimney';
+                    }
+                } else {
+                    if (icon) {
+                        if (i === 1) icon.className = 'fa-solid fa-receipt';
+                        else if (i === 2) icon.className = 'fa-solid fa-fire-burner';
+                        else if (i === 3) icon.className = (tipoEntrega === 'delivery') ? 'fa-solid fa-motorcycle' : 'fa-solid fa-bag-shopping';
+                        else if (i === 4) icon.className = 'fa-solid fa-house-chimney';
+                    }
+                }
+            });
+
+            // Si fue entregado o cancelado, detener polling para ahorrar recursos
+            if (estadoActual === 'Entregado' || data.es_cancelado) {
+                if (orderPollingInterval) clearInterval(orderPollingInterval);
+            }
+        })
+        .catch(err => console.log('Polling tracking error:', err));
+}
+
+// Iniciar consulta cada 3 segundos
+orderPollingInterval = setInterval(consultarEstadoPedidoEnVivo, 3000);
+</script>
 
 </body>
 </html>

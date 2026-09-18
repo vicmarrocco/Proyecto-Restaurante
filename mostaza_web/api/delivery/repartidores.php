@@ -1,7 +1,7 @@
 <?php
 // ============================================================
 // api/delivery/repartidores.php
-// Lista de repartidores disponibles y perfiles para la app.
+// Lista de repartidores oficiales precargados en la base de datos de Mostaza
 // ============================================================
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -14,47 +14,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once(__DIR__ . '/../../conexion.php');
 
-$repartidoresPredefinidos = [
-    [
-        'id' => 1,
-        'nombre' => 'Ramiro González',
-        'vehiculo' => 'Moto Honda Wave 110cc',
-        'patente' => 'A123BCD',
-        'telefono' => '11-4567-8901',
-        'avatar' => '🛵',
-        'estado' => 'Disponible'
-    ],
-    [
-        'id' => 2,
-        'nombre' => 'Lucas Benítez',
-        'vehiculo' => 'Bicicleta MTB Venzo',
-        'patente' => 'Sin patente',
-        'telefono' => '11-5678-9012',
-        'avatar' => '🚲',
-        'estado' => 'Disponible'
-    ],
-    [
-        'id' => 3,
-        'nombre' => 'Franco Morales',
-        'vehiculo' => 'Moto Yamaha YBR 125cc',
-        'patente' => 'A234EFG',
-        'telefono' => '11-6789-0123',
-        'avatar' => '🛵',
-        'estado' => 'Disponible'
-    ],
-    [
-        'id' => 4,
-        'nombre' => 'Alberto Gómez',
-        'vehiculo' => 'Moto Corven Energy 110cc',
-        'patente' => 'A345HIJ',
-        'telefono' => '11-7890-1234',
-        'avatar' => '🛵',
-        'estado' => 'Disponible'
-    ]
-];
+$repartidores = [];
+
+$res = $conn->query("
+    SELECT idrepartidor, nombre, dni, telefono, vehiculo, patente, avatar, sucursal_base, calificacion, viajes_totales, estado_servicio, email 
+    FROM repartidor 
+    WHERE activo = 1 
+    ORDER BY idrepartidor ASC
+");
+
+if ($res) {
+    while ($r = $res->fetch_assoc()) {
+        $repartidores[] = [
+            'id' => intval($r['idrepartidor']),
+            'idempleado' => intval($r['idrepartidor']),
+            'nombre' => $r['nombre'],
+            'email' => $r['email'] ?? '',
+            'dni' => $r['dni'],
+            'telefono' => $r['telefono'],
+            'vehiculo' => $r['vehiculo'],
+            'patente' => $r['patente'],
+            'avatar' => $r['avatar'] ?: '🛵',
+            'sucursal_base' => $r['sucursal_base'] ?: 'Mostaza Formosa Centro',
+            'calificacion' => floatval($r['calificacion']),
+            'viajes_totales' => intval($r['viajes_totales']),
+            'estado_servicio' => $r['estado_servicio'] ?: 'Disponible',
+            'estado' => $r['estado_servicio'] ?: 'Disponible'
+        ];
+    }
+}
 
 echo json_encode([
     'ok' => true,
-    'total' => count($repartidoresPredefinidos),
-    'repartidores' => $repartidoresPredefinidos
+    'empresa' => 'Mostaza Argentina S.A.',
+    'total' => count($repartidores),
+    'repartidores' => $repartidores
 ]);

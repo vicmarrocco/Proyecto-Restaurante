@@ -7,6 +7,8 @@ from tkinter import ttk, messagebox, simpledialog
 import time
 import datetime
 import threading
+import random
+import webbrowser
 from config import *
 from api_client import api
 
@@ -20,6 +22,22 @@ class POSWindow:
         self.root.geometry("1240x780")
         self.root.minsize(1080, 700)
         self.root.configure(bg=COLOR_LIGHT_BG)
+        self.root.resizable(True, True)
+
+        # Control de Pantalla Completa y Responsividad
+        self.is_fullscreen = False
+        self._current_cols = 3
+        if globals().get("POS_INICIAR_PANTALLA_COMPLETA", False):
+            try:
+                self.root.attributes("-fullscreen", True)
+                self.is_fullscreen = True
+            except Exception:
+                pass
+        elif globals().get("POS_INICIAR_MAXIMIZADO", True):
+            try:
+                self.root.state("zoomed")
+            except Exception:
+                pass
 
         # Estado del POS
         self.catalogo = {}
@@ -46,45 +64,45 @@ class POSWindow:
             w.destroy()
 
         # ============================================================
-        # 1. HEADER SUPERIOR REORGANIZADO Y RESPONSIVO
+        # 1. HEADER SUPERIOR REORGANIZADO Y RESPONSIVO (ÉNFASIS EN BLANCO)
         # ============================================================
-        header = tk.Frame(self.root, bg=COLOR_SIDEBAR, height=58, padx=16, pady=8)
+        header = tk.Frame(self.root, bg=COLOR_WHITE, height=60, padx=18, pady=10, relief="solid", bd=1)
         header.pack(fill="x", side="top")
 
         # Zona Izquierda: Brand
-        brand_frame = tk.Frame(header, bg=COLOR_SIDEBAR)
+        brand_frame = tk.Frame(header, bg=COLOR_WHITE)
         brand_frame.pack(side="left", fill="y")
 
         lbl_brand = tk.Label(
             brand_frame,
             text="MOSTAZA POS",
             font=(FONT_FAMILY, 15, "bold"),
-            fg=COLOR_WHITE,
-            bg=COLOR_SIDEBAR
+            fg=COLOR_ROJO,
+            bg=COLOR_WHITE
         )
         lbl_brand.pack(side="left", padx=(0, 8))
 
         lbl_badge = tk.Label(
             brand_frame,
-            text="TERMINAL 01",
+            text=f"CAJA {TERMINAL_NUMERO:02d} · {TERMINAL_NOMBRE.split(' - ')[-1].upper()}",
             font=(FONT_FAMILY, 8, "bold"),
-            fg=COLOR_AMARILLO,
-            bg=COLOR_DARK,
-            padx=7,
+            fg="#FFFFFF",
+            bg=TERMINAL_BADGE_COLOR,
+            padx=8,
             pady=3
         )
         lbl_badge.pack(side="left")
 
         # Zona Centro: Cajero, Turno, Caja Status y Reloj
-        center_frame = tk.Frame(header, bg=COLOR_SIDEBAR)
+        center_frame = tk.Frame(header, bg=COLOR_WHITE)
         center_frame.pack(side="left", fill="both", expand=True, padx=15)
 
         self.lbl_cajero = tk.Label(
             center_frame,
             text=f"👤 {self.cajero_info.get('nombre_completo', 'Operador')}",
             font=(FONT_FAMILY, 9, "bold"),
-            fg=COLOR_WHITE,
-            bg=COLOR_SIDEBAR
+            fg=COLOR_TEXT,
+            bg=COLOR_WHITE
         )
         self.lbl_cajero.pack(side="left", padx=8)
 
@@ -93,8 +111,8 @@ class POSWindow:
             center_frame,
             text=f"⏰ {turno_nombre}",
             font=(FONT_FAMILY, 9, "bold"),
-            fg=COLOR_AMARILLO,
-            bg=COLOR_SIDEBAR
+            fg="#B45309",
+            bg=COLOR_WHITE
         )
         self.lbl_turno.pack(side="left", padx=8)
 
@@ -102,8 +120,8 @@ class POSWindow:
             center_frame,
             text="💰 Caja: Conectando...",
             font=(FONT_FAMILY, 9, "bold"),
-            fg="#86EFAC",
-            bg=COLOR_SIDEBAR
+            fg="#15803D",
+            bg=COLOR_WHITE
         )
         self.lbl_caja_status.pack(side="left", padx=8)
 
@@ -111,25 +129,42 @@ class POSWindow:
             center_frame,
             text="--:--:--",
             font=("Courier New", 12, "bold"),
-            fg=COLOR_AMARILLO,
-            bg=COLOR_DARK,
+            fg=COLOR_ROJO,
+            bg="#F1F5F9",
             padx=10,
             pady=3
         )
         self.lbl_clock.pack(side="right", padx=10)
 
         # Zona Derecha: Botones de Acción
-        actions_frame = tk.Frame(header, bg=COLOR_SIDEBAR)
+        actions_frame = tk.Frame(header, bg=COLOR_WHITE)
         actions_frame.pack(side="right", fill="y")
+
+        self.btn_fullscreen = tk.Button(
+            actions_frame,
+            text="🗗 Salir (F11)" if self.is_fullscreen else "🗖 Pantalla Completa (F11)",
+            font=(FONT_FAMILY, 9, "bold"),
+            bg="#FEF3C7" if self.is_fullscreen else "#F1F5F9",
+            fg="#92400E" if self.is_fullscreen else COLOR_TEXT,
+            activebackground="#E2E8F0",
+            relief="solid",
+            bd=1,
+            cursor="hand2",
+            padx=10,
+            pady=4,
+            command=self._toggle_fullscreen
+        )
+        self.btn_fullscreen.pack(side="left", padx=3)
 
         btn_arqueo = tk.Button(
             actions_frame,
             text="📊 Arqueo Caja",
             font=(FONT_FAMILY, 9, "bold"),
-            bg="#334155",
-            fg=COLOR_WHITE,
-            activebackground="#475569",
-            relief="flat",
+            bg="#F1F5F9",
+            fg=COLOR_TEXT,
+            activebackground="#E2E8F0",
+            relief="solid",
+            bd=1,
             cursor="hand2",
             padx=10,
             pady=4,
@@ -141,10 +176,11 @@ class POSWindow:
             actions_frame,
             text="🧾 Facturas / Tickets",
             font=(FONT_FAMILY, 9, "bold"),
-            bg="#334155",
-            fg=COLOR_WHITE,
-            activebackground="#475569",
-            relief="flat",
+            bg="#F1F5F9",
+            fg=COLOR_TEXT,
+            activebackground="#E2E8F0",
+            relief="solid",
+            bd=1,
             cursor="hand2",
             padx=10,
             pady=4,
@@ -154,14 +190,15 @@ class POSWindow:
 
         btn_logout = tk.Button(
             actions_frame,
-            text="🚪 Salir",
+            text="🚪 Cerrar Sesión",
             font=(FONT_FAMILY, 9, "bold"),
-            bg="#991B1B",
-            fg=COLOR_WHITE,
-            activebackground="#DC2626",
-            relief="flat",
+            bg="#FEE2E2",
+            fg="#991B1B",
+            activebackground="#FECACA",
+            relief="solid",
+            bd=1,
             cursor="hand2",
-            padx=10,
+            padx=12,
             pady=4,
             command=self._cerrar_sesion
         )
@@ -223,10 +260,16 @@ class POSWindow:
         self.canvas_window_id = self.canvas_prod.create_window((0, 0), window=self.grid_prod, anchor="nw")
         self.canvas_prod.configure(yscrollcommand=self.scroll_prod.set)
 
-        self.canvas_prod.bind(
-            "<Configure>",
-            lambda e: self.canvas_prod.itemconfig(self.canvas_window_id, width=e.width)
-        )
+        def _on_canvas_configure(e):
+            self.canvas_prod.itemconfig(self.canvas_window_id, width=e.width)
+            w = e.width
+            cols = 5 if w >= 1150 else (4 if w >= 860 else (3 if w >= 560 else 2))
+            if getattr(self, '_current_cols', None) != cols:
+                self._current_cols = cols
+                if getattr(self, 'catalogo', None):
+                    self._render_productos()
+
+        self.canvas_prod.bind("<Configure>", _on_canvas_configure)
 
         self.canvas_prod.pack(side="left", fill="both", expand=True)
         self.scroll_prod.pack(side="right", fill="y")
@@ -443,7 +486,13 @@ class POSWindow:
             lbl_none.pack(pady=40)
             return
 
-        cols = 3
+        w = self.canvas_prod.winfo_width()
+        if w > 100:
+            cols = 5 if w >= 1150 else (4 if w >= 860 else (3 if w >= 560 else 2))
+            self._current_cols = cols
+        else:
+            cols = getattr(self, '_current_cols', 3)
+
         for idx, prod in enumerate(prods):
             r = idx // cols
             c = idx % cols
@@ -457,7 +506,7 @@ class POSWindow:
                 font=(FONT_FAMILY, 9, "bold"),
                 fg=COLOR_TEXT,
                 bg="#FFFFFF",
-                wraplength=180,
+                wraplength=190,
                 justify="center"
             )
             lbl_pname.pack(fill="x", pady=(0, 4))
@@ -474,8 +523,11 @@ class POSWindow:
             for widget in [card, lbl_pname, lbl_price]:
                 widget.bind("<Button-1>", lambda e, p=prod: self._agregar_a_comanda(p))
 
-        for col in range(cols):
-            self.grid_prod.columnconfigure(col, weight=1)
+        for c_idx in range(6):
+            if c_idx < cols:
+                self.grid_prod.columnconfigure(c_idx, weight=1)
+            else:
+                self.grid_prod.columnconfigure(c_idx, weight=0)
 
     def _filtrar_productos(self, texto):
         self.filtro_texto = texto.strip()
@@ -633,15 +685,15 @@ class POSWindow:
         m_win.configure(bg=COLOR_WHITE)
         m_win.grab_set()
 
-        h_f = tk.Frame(m_win, bg=COLOR_SIDEBAR, padx=15, pady=12)
+        h_f = tk.Frame(m_win, bg=COLOR_WHITE, padx=15, pady=12, relief="solid", bd=1)
         h_f.pack(fill="x")
 
-        tk.Label(h_f, text="🗺️ SELECCIÓN INTERACTIVA DE MESAS EN TIEMPO REAL", font=(FONT_FAMILY, 11, "bold"), fg=COLOR_WHITE, bg=COLOR_SIDEBAR).pack(side="left")
+        tk.Label(h_f, text="🗺️ SELECCIÓN INTERACTIVA DE MESAS EN TIEMPO REAL", font=(FONT_FAMILY, 11, "bold"), fg=COLOR_ROJO, bg=COLOR_WHITE).pack(side="left")
 
-        leg_f = tk.Frame(h_f, bg=COLOR_SIDEBAR)
+        leg_f = tk.Frame(h_f, bg=COLOR_WHITE)
         leg_f.pack(side="right")
-        tk.Label(leg_f, text="● Disponible", font=(FONT_FAMILY, 8, "bold"), fg="#86EFAC", bg=COLOR_SIDEBAR).pack(side="left", padx=4)
-        tk.Label(leg_f, text="● Ocupada", font=(FONT_FAMILY, 8, "bold"), fg="#FCA5A5", bg=COLOR_SIDEBAR).pack(side="left", padx=4)
+        tk.Label(leg_f, text="● Disponible", font=(FONT_FAMILY, 8, "bold"), fg="#16A34A", bg=COLOR_WHITE).pack(side="left", padx=4)
+        tk.Label(leg_f, text="● Ocupada", font=(FONT_FAMILY, 8, "bold"), fg="#DC2626", bg=COLOR_WHITE).pack(side="left", padx=4)
 
         tabs_f = tk.Frame(m_win, bg="#F1F5F9", padx=10, pady=8)
         tabs_f.pack(fill="x")
@@ -753,14 +805,14 @@ class POSWindow:
 
         modal = tk.Toplevel(self.root)
         modal.title("Facturar y Cobrar Comanda · Mostaza POS")
-        modal.geometry("580x640")
+        modal.geometry("640x780")
         modal.resizable(False, False)
         modal.configure(bg=COLOR_WHITE)
         modal.grab_set()
 
         modal.update_idletasks()
-        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - 290
-        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - 320
+        x = max(10, self.root.winfo_x() + (self.root.winfo_width() // 2) - 320)
+        y = max(10, self.root.winfo_y() + (self.root.winfo_height() // 2) - 390)
         modal.geometry(f"+{x}+{y}")
 
         tot_frame = tk.Frame(modal, bg=COLOR_LIGHT_BG, padx=20, pady=12, relief="solid", bd=1)
@@ -835,20 +887,204 @@ class POSWindow:
             b.grid(row=r, column=c, padx=3, pady=3, sticky="nsew", ipady=5)
         for c in range(3): bills_frame.columnconfigure(c, weight=1)
 
-        # 2. Contenedor Tarjeta
+        # 2. Contenedor Tarjeta (Mismos datos requeridos que en la web)
         f_tarjeta = tk.Frame(modal, bg=COLOR_WHITE)
-        tk.Label(f_tarjeta, text="💳 Dispositivo POS", font=(FONT_FAMILY, 13, "bold"), fg=COLOR_BLUE, bg=COLOR_WHITE).pack(pady=(20, 6))
-        tk.Label(f_tarjeta, text="Pasar tarjeta de Débito/Crédito por la terminal física.\nVisa, Mastercard, Cabal.", font=(FONT_FAMILY, 10), fg=COLOR_TEXT_MUTED, bg=COLOR_WHITE, justify="center").pack()
+        tk.Label(f_tarjeta, text="💳 Pago con Tarjeta de Débito / Crédito", font=(FONT_FAMILY, 11, "bold"), fg=COLOR_BLUE, bg=COLOR_WHITE).pack(pady=(4, 2))
+
+        # Botones Rápidos de Prueba (igual a la web)
+        f_test_cards = tk.Frame(f_tarjeta, bg=COLOR_WHITE)
+        f_test_cards.pack(fill="x", pady=(2, 6))
+
+        def autocompletar_tarjeta_prueba(tipo):
+            entry_card_num.delete(0, tk.END)
+            entry_card_name.delete(0, tk.END)
+            entry_card_dni.delete(0, tk.END)
+            entry_card_exp.delete(0, tk.END)
+            entry_card_cvv.delete(0, tk.END)
+            entry_card_auth.delete(0, tk.END)
+            if tipo == "visa":
+                entry_card_num.insert(0, "4500 1234 5678 9010")
+                entry_card_name.insert(0, "JUAN PEREZ")
+                entry_card_dni.insert(0, "38123456")
+                entry_card_exp.insert(0, "12/28")
+                entry_card_cvv.insert(0, "456")
+                auth_code = f"AUTH-VISA-{random.randint(100000, 999999)}"
+                entry_card_auth.insert(0, auth_code)
+            else:
+                entry_card_num.insert(0, "5400 9876 5432 1098")
+                entry_card_name.insert(0, "MARIA GOMEZ")
+                entry_card_dni.insert(0, "38123456")
+                entry_card_exp.insert(0, "08/29")
+                entry_card_cvv.insert(0, "789")
+                auth_code = f"AUTH-MC-{random.randint(100000, 999999)}"
+                entry_card_auth.insert(0, auth_code)
+
+        btn_visa = tk.Button(
+            f_test_cards, text="💳 Visa de Prueba", font=(FONT_FAMILY, 8, "bold"),
+            bg="#E0F2FE", fg="#0369A1", relief="flat", cursor="hand2",
+            command=lambda: autocompletar_tarjeta_prueba("visa")
+        )
+        btn_visa.pack(side="left", fill="x", expand=True, padx=2)
+
+        btn_mc = tk.Button(
+            f_test_cards, text="💳 Mastercard de Prueba", font=(FONT_FAMILY, 8, "bold"),
+            bg="#FEF3C7", fg="#92400E", relief="flat", cursor="hand2",
+            command=lambda: autocompletar_tarjeta_prueba("mastercard")
+        )
+        btn_mc.pack(side="left", fill="x", expand=True, padx=2)
+
+        f_tarj_inputs = tk.Frame(f_tarjeta, bg=COLOR_WHITE)
+        f_tarj_inputs.pack(fill="x", pady=2)
+
+        # Número de Tarjeta
+        tk.Label(f_tarj_inputs, text="Número de Tarjeta *:", font=(FONT_FAMILY, 8, "bold"), bg=COLOR_WHITE).grid(row=0, column=0, sticky="w", pady=2)
+        entry_card_num = tk.Entry(f_tarj_inputs, font=("Courier New", 10, "bold"), relief="solid", bd=1)
+        entry_card_num.insert(0, "4500 1234 5678 9010")
+        entry_card_num.grid(row=0, column=1, columnspan=3, sticky="ew", padx=(6, 0), pady=2)
+
+        # Nombre y Apellido
+        nombre_def = self.cliente_club.get("nombre_completo", "JUAN PEREZ") if self.cliente_club else "JUAN PEREZ"
+        tk.Label(f_tarj_inputs, text="Nombre y Apellido *:", font=(FONT_FAMILY, 8, "bold"), bg=COLOR_WHITE).grid(row=1, column=0, sticky="w", pady=2)
+        entry_card_name = tk.Entry(f_tarj_inputs, font=(FONT_FAMILY, 9), relief="solid", bd=1)
+        entry_card_name.insert(0, nombre_def)
+        entry_card_name.grid(row=1, column=1, columnspan=3, sticky="ew", padx=(6, 0), pady=2)
+
+        # DNI
+        dni_def = self.cliente_club.get("dni", "38123456") if self.cliente_club else "38123456"
+        tk.Label(f_tarj_inputs, text="DNI del Titular *:", font=(FONT_FAMILY, 8, "bold"), bg=COLOR_WHITE).grid(row=2, column=0, sticky="w", pady=2)
+        entry_card_dni = tk.Entry(f_tarj_inputs, font=("Courier New", 9), relief="solid", bd=1)
+        entry_card_dni.insert(0, dni_def)
+        entry_card_dni.grid(row=2, column=1, columnspan=3, sticky="ew", padx=(6, 0), pady=2)
+
+        # Vencimiento y CVV (en la misma fila)
+        tk.Label(f_tarj_inputs, text="Vence (MM/AA) *:", font=(FONT_FAMILY, 8, "bold"), bg=COLOR_WHITE).grid(row=3, column=0, sticky="w", pady=2)
+        entry_card_exp = tk.Entry(f_tarj_inputs, font=("Courier New", 9), width=8, relief="solid", bd=1)
+        entry_card_exp.insert(0, "12/28")
+        entry_card_exp.grid(row=3, column=1, sticky="w", padx=(6, 10), pady=2)
+
+        tk.Label(f_tarj_inputs, text="CVV *:", font=(FONT_FAMILY, 8, "bold"), bg=COLOR_WHITE).grid(row=3, column=2, sticky="e", pady=2)
+        entry_card_cvv = tk.Entry(f_tarj_inputs, font=("Courier New", 9), width=6, show="*", relief="solid", bd=1)
+        entry_card_cvv.insert(0, "456")
+        entry_card_cvv.grid(row=3, column=3, sticky="w", padx=(6, 0), pady=2)
+
+        # Cuotas disponibles
+        tk.Label(f_tarj_inputs, text="Cuotas disponibles:", font=(FONT_FAMILY, 8, "bold"), bg=COLOR_WHITE).grid(row=4, column=0, sticky="w", pady=2)
+        combo_cuotas = ttk.Combobox(
+            f_tarj_inputs,
+            values=["1 pago sin interés (Precio contado)", "3 cuotas fijas", "6 cuotas fijas"],
+            state="readonly", font=(FONT_FAMILY, 8)
+        )
+        combo_cuotas.current(0)
+        combo_cuotas.grid(row=4, column=1, columnspan=3, sticky="ew", padx=(6, 0), pady=2)
+
+        # Nº Autorización POS
+        tk.Label(f_tarj_inputs, text="Nº Autorización POS:", font=(FONT_FAMILY, 8, "bold"), bg=COLOR_WHITE).grid(row=5, column=0, sticky="w", pady=2)
+        f_auth_line = tk.Frame(f_tarj_inputs, bg=COLOR_WHITE)
+        f_auth_line.grid(row=5, column=1, columnspan=3, sticky="ew", padx=(6, 0), pady=2)
+
+        entry_card_auth = tk.Entry(f_auth_line, font=("Courier New", 9, "bold"), relief="solid", bd=1)
+        entry_card_auth.insert(0, f"AUTH-POS-{random.randint(100000, 999999)}")
+        entry_card_auth.pack(side="left", fill="x", expand=True)
+
+        def simular_pos():
+            rand_auth = f"AUTH-POS-{random.randint(100000, 999999)}"
+            entry_card_auth.delete(0, tk.END)
+            entry_card_auth.insert(0, rand_auth)
+            messagebox.showinfo("POS Terminal", f"¡Aprobación POS exitosa!\nCódigo de autorización: {rand_auth}")
+
+        btn_sim_pos = tk.Button(
+            f_auth_line, text="⚡ Generar", font=(FONT_FAMILY, 8, "bold"),
+            bg="#E0F2FE", fg="#0369A1", activebackground="#BAE6FD", relief="flat", cursor="hand2",
+            command=simular_pos
+        )
+        btn_sim_pos.pack(side="right", padx=(4, 0))
+
+        f_tarj_inputs.columnconfigure(1, weight=1)
 
         # 3. Contenedor Mercado Pago
         f_mp = tk.Frame(modal, bg=COLOR_WHITE)
-        tk.Label(f_mp, text="📱 QR Interoperable Mercado Pago", font=(FONT_FAMILY, 13, "bold"), fg="#009EE3", bg=COLOR_WHITE).pack(pady=(20, 6))
-        tk.Label(f_mp, text="Mostrale el código QR del mostrador al cliente para escanear y abonar.", font=(FONT_FAMILY, 10), fg=COLOR_TEXT_MUTED, bg=COLOR_WHITE, justify="center").pack()
+        tk.Label(f_mp, text="📱 QR Oficial Interoperable (Transferencias 3.0)", font=(FONT_FAMILY, 12, "bold"), fg="#009EE3", bg=COLOR_WHITE).pack(pady=(4, 2))
+        tk.Label(f_mp, text="Compatible con Mercado Pago, MODO, Cuenta DNI, BNA+, Galicia, etc.", font=(FONT_FAMILY, 8), fg=COLOR_TEXT_MUTED, bg=COLOR_WHITE).pack()
+
+        qr_container = tk.Frame(f_mp, bg="#F8FAFC", relief="solid", bd=1, padx=6, pady=6)
+        qr_container.pack(pady=6)
+
+        lbl_qr_img = tk.Label(qr_container, text="Generando QR EMVCo...", font=(FONT_FAMILY, 9, "italic"), fg=COLOR_TEXT_MUTED, bg="#F8FAFC", width=22, height=9)
+        lbl_qr_img.pack()
+
+        def cargar_qr_mp_async():
+            def run():
+                try:
+                    img_data = obtener_qr_image_bytes(monto=total)
+                    if img_data:
+                        def apply_img():
+                            if modal.winfo_exists():
+                                modal.qr_photo = tk.PhotoImage(data=img_data)
+                                lbl_qr_img.config(image=modal.qr_photo, text="", width=160, height=160)
+                        modal.after(0, apply_img)
+                    else:
+                        def apply_err():
+                            if modal.winfo_exists():
+                                lbl_qr_img.config(text="QR EMVCo Generado\nUsar Alias/CVU", width=22, height=9)
+                        modal.after(0, apply_err)
+                except Exception as ex:
+                    print("Error async QR:", ex)
+            t = threading.Thread(target=run, daemon=True)
+            t.start()
+
+        cargar_qr_mp_async()
+
+        mp_info_box = tk.Frame(f_mp, bg="#F0F9FF", relief="solid", bd=1, padx=8, pady=4)
+        mp_info_box.pack(fill="x", pady=(2, 6))
+        tk.Label(mp_info_box, text=f"Titular: {BANCO_TITULAR}  |  CUIT: {BANCO_CUIT}", font=(FONT_FAMILY, 8, "bold"), fg="#0369A1", bg="#F0F9FF").pack()
+        tk.Label(mp_info_box, text=f"Alias: {BANCO_ALIAS}  |  CVU: {BANCO_CVU}", font=(FONT_FAMILY, 8), fg="#0C4A6E", bg="#F0F9FF").pack()
+
+        f_mp_actions = tk.Frame(f_mp, bg=COLOR_WHITE)
+        f_mp_actions.pack(fill="x", pady=2)
+        tk.Label(f_mp_actions, text="Nº Operación MP:", font=(FONT_FAMILY, 9, "bold"), bg=COLOR_WHITE).pack(side="left")
+        entry_mp_op = tk.Entry(f_mp_actions, font=("Courier New", 10, "bold"), relief="solid", bd=1)
+        entry_mp_op.pack(side="left", fill="x", expand=True, padx=(6, 4))
+
+        def autocompletar_mp():
+            op_id = f"MP-{random.randint(100000000, 999999999)}"
+            entry_mp_op.delete(0, tk.END)
+            entry_mp_op.insert(0, op_id)
+            messagebox.showinfo("Mercado Pago", f"¡Pago acreditado en cuenta!\nID Operación: {op_id}")
+
+        btn_auto_mp = tk.Button(f_mp_actions, text="⚡ Acreditar", font=(FONT_FAMILY, 8, "bold"), bg="#DCFCE7", fg="#166534", relief="flat", cursor="hand2", command=autocompletar_mp)
+        btn_auto_mp.pack(side="right", padx=(2, 2))
+
+        btn_link_mp = tk.Button(f_mp_actions, text="🌐 Link", font=(FONT_FAMILY, 8, "bold"), bg="#E0F2FE", fg="#0369A1", relief="flat", cursor="hand2", command=lambda: webbrowser.open(MP_LINK_PAGO))
+        btn_link_mp.pack(side="right")
 
         # 4. Contenedor Transferencia
         f_transf = tk.Frame(modal, bg=COLOR_WHITE)
-        tk.Label(f_transf, text="🏦 Alias: mostaza.oficial.mp", font=(FONT_FAMILY, 13, "bold"), fg=COLOR_DARK, bg=COLOR_WHITE).pack(pady=(20, 6))
-        tk.Label(f_transf, text="CUIT: 30-71234567-9 · Razón Social: Mostaza SA", font=(FONT_FAMILY, 10), fg=COLOR_TEXT_MUTED, bg=COLOR_WHITE, justify="center").pack()
+        tk.Label(f_transf, text="🏦 Transferencia Bancaria Inmediata", font=(FONT_FAMILY, 12, "bold"), fg=COLOR_DARK, bg=COLOR_WHITE).pack(pady=(6, 4))
+        
+        bank_box = tk.Frame(f_transf, bg="#FAF5EA", relief="solid", bd=1, padx=12, pady=8)
+        bank_box.pack(fill="x", pady=(0, 8))
+        tk.Label(bank_box, text=f"Banco/Billetera: {BANCO_NOMBRE}", font=(FONT_FAMILY, 9, "bold"), fg=COLOR_DARK, bg="#FAF5EA").pack(anchor="w")
+        tk.Label(bank_box, text=f"Titular: {BANCO_TITULAR}", font=(FONT_FAMILY, 8), fg=COLOR_TEXT, bg="#FAF5EA").pack(anchor="w")
+        tk.Label(bank_box, text=f"CUIT: {BANCO_CUIT}", font=(FONT_FAMILY, 8), fg=COLOR_TEXT, bg="#FAF5EA").pack(anchor="w")
+        tk.Label(bank_box, text=f"Alias: {BANCO_ALIAS}", font=(FONT_FAMILY, 9, "bold"), fg=COLOR_ROJO, bg="#FAF5EA").pack(anchor="w")
+        tk.Label(bank_box, text=f"CVU: {BANCO_CVU}", font=(FONT_FAMILY, 8, "bold"), fg=COLOR_DARK, bg="#FAF5EA").pack(anchor="w")
+
+        f_transf_ref = tk.Frame(f_transf, bg=COLOR_WHITE)
+        f_transf_ref.pack(fill="x", pady=4)
+        tk.Label(f_transf_ref, text="Nº Comprobante:", font=(FONT_FAMILY, 9, "bold"), bg=COLOR_WHITE).pack(side="left")
+        entry_transf_ref = tk.Entry(f_transf_ref, font=("Courier New", 10, "bold"), relief="solid", bd=1)
+        entry_transf_ref.pack(side="left", fill="x", expand=True, padx=(6, 4))
+
+        def test_voucher_transf():
+            v_id = f"TRANSF-{datetime.datetime.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+            entry_transf_ref.delete(0, tk.END)
+            entry_transf_ref.insert(0, v_id)
+            messagebox.showinfo("Comprobante Transferencia", f"Comprobante asignado:\n{v_id}")
+
+        btn_test_transf = tk.Button(f_transf_ref, text="💡 Asignar", font=(FONT_FAMILY, 8, "bold"), bg="#FEF3C7", fg="#92400E", relief="flat", cursor="hand2", command=test_voucher_transf)
+        btn_test_transf.pack(side="right")
+        
+        tk.Label(f_transf, text="Verificar la acreditación en línea antes de confirmar.", font=(FONT_FAMILY, 8, "italic"), fg=COLOR_TEXT_MUTED, bg=COLOR_WHITE).pack(pady=(4, 0))
 
         # Botón Final Cobrar
         btn_confirmar = tk.Button(
@@ -860,11 +1096,26 @@ class POSWindow:
             activebackground=COLOR_ROJO_OSCURO,
             relief="flat",
             cursor="hand2",
-            command=lambda: self._procesar_venta(modal, metodo_var.get(), entry_paga_con.get(), total)
+            command=lambda: self._procesar_venta(
+                modal,
+                metodo_var.get(),
+                entry_paga_con.get(),
+                total,
+                mp_op=entry_mp_op.get(),
+                card_num=entry_card_num.get(),
+                card_name=entry_card_name.get(),
+                card_dni=entry_card_dni.get(),
+                card_exp=entry_card_exp.get(),
+                card_cvv=entry_card_cvv.get(),
+                card_auth=entry_card_auth.get(),
+                card_cuotas=combo_cuotas.get(),
+                transf_ref=entry_transf_ref.get()
+            )
         )
         btn_confirmar.pack(fill="x", padx=20, pady=15, ipady=10, side="bottom")
+        modal.bind("<Return>", lambda e: btn_confirmar.invoke())
 
-    def _procesar_venta(self, modal, metodo_pago, paga_con_str, total):
+    def _procesar_venta(self, modal, metodo_pago, paga_con_str, total, mp_op="", card_num="", card_name="", card_dni="", card_exp="", card_cvv="", card_auth="", card_cuotas="1 Pago", transf_ref=""):
         try:
             paga_con = float(paga_con_str.replace(".", "").replace(",", ".")) if metodo_pago == "efectivo" else total
         except ValueError:
@@ -872,16 +1123,53 @@ class POSWindow:
 
         mesa_num = self.numero_mesa if self.tipo_entrega == "salon" else None
 
+        num_cuotas = 1
+        if "3" in str(card_cuotas):
+            num_cuotas = 3
+        elif "6" in str(card_cuotas):
+            num_cuotas = 6
+
+        # Validaciones de Tarjeta idénticas a la web
+        if metodo_pago == "tarjeta":
+            num_clean = card_num.replace(" ", "").replace("-", "")
+            if len(num_clean) < 15:
+                messagebox.showwarning("Datos de Tarjeta Incompletos", "Por favor ingresá un número de tarjeta válido (16 dígitos).")
+                return
+            if not card_name.strip():
+                messagebox.showwarning("Datos de Tarjeta Incompletos", "Por favor ingresá el nombre y apellido del titular como figura en el plástico.")
+                return
+            if not card_dni.strip():
+                messagebox.showwarning("Datos de Tarjeta Incompletos", "Por favor ingresá el DNI del titular de la tarjeta.")
+                return
+            if not card_exp.strip() or "/" not in card_exp:
+                messagebox.showwarning("Datos de Tarjeta Incompletos", "Por favor ingresá la fecha de vencimiento en formato MM/AA.")
+                return
+            if len(card_cvv.strip()) < 3:
+                messagebox.showwarning("Datos de Tarjeta Incompletos", "Por favor ingresá el código de seguridad (CVV de 3 o 4 dígitos).")
+                return
+            if not card_auth.strip():
+                card_auth = f"AUTH-POS-{random.randint(100000, 999999)}"
+
         payload = {
-            "cajero_id": self.cajero_info.get("id", 1),
+            "numero_caja": TERMINAL_NUMERO,
+            "terminal_nombre": TERMINAL_NOMBRE,
+            "idempleado_cajero": self.cajero_info.get("idempleado") or self.cajero_info.get("id", 1),
+            "cajero_id": self.cajero_info.get("idempleado") or self.cajero_info.get("id", 1),
             "cajero_nombre": self.cajero_info.get("nombre_completo", "Cajero"),
             "items": self.comanda,
             "tipo_entrega": self.tipo_entrega,
             "numero_mesa": mesa_num,
             "idusuario": self.cliente_club.get("idusuario") if self.cliente_club else None,
-            "nombre_cliente": self.cliente_club.get("nombre_completo") if self.cliente_club else "Consumidor Final",
-            "cuit_dni_cliente": self.cliente_club.get("dni", "0") if self.cliente_club else "0",
+            "nombre_cliente": (card_name.strip() if metodo_pago == "tarjeta" and card_name.strip() else (self.cliente_club.get("nombre_completo") if self.cliente_club else "Consumidor Final")),
+            "cuit_dni_cliente": (card_dni.strip() if metodo_pago == "tarjeta" and card_dni.strip() else (self.cliente_club.get("dni", "0") if self.cliente_club else "0")),
             "metodo_pago": metodo_pago,
+            "mp_payment_id": mp_op.strip() if mp_op else None,
+            "tarjeta_numero": card_num.strip() if metodo_pago == "tarjeta" else None,
+            "tarjeta_nombre": card_name.strip() if metodo_pago == "tarjeta" else None,
+            "tarjeta_dni": card_dni.strip() if metodo_pago == "tarjeta" else None,
+            "tarjeta_auth_code": card_auth.strip() if card_auth else None,
+            "tarjeta_cuotas": num_cuotas,
+            "comprobante_transferencia": transf_ref.strip() if transf_ref else None,
             "tipo_comprobante": "Factura B",
             "descuento": self.descuento,
             "paga_con": paga_con,
@@ -917,6 +1205,15 @@ class POSWindow:
         cae_num = data.get("cae", "74123456789012")
         cae_vto = data.get("cae_vto", datetime.datetime.now().strftime("%d/%m/%Y"))
 
+        pago_det = data.get('metodo_pago', '').upper()
+        if data.get("mp_payment_id"):
+            pago_det += f" (Op #{data.get('mp_payment_id')})"
+        elif data.get("tarjeta_auth_code"):
+            cuotas_txt = f" {data.get('tarjeta_cuotas')}C" if data.get('tarjeta_cuotas', 1) > 1 else ""
+            pago_det += f"{cuotas_txt} (Auth #{data.get('tarjeta_auth_code')})"
+        elif data.get("comprobante_transferencia"):
+            pago_det += f" (Comp #{data.get('comprobante_transferencia')})"
+
         ticket_text = f"""
 ========================================
              MOSTAZA SA
@@ -928,7 +1225,7 @@ Fecha: {data.get('fecha')}
 Cajero: {data.get('cajero', self.cajero_info.get('nombre_completo', 'Operador'))}
 Cliente: {data.get('cliente', 'Consumidor Final')}
 Modalidad: {data.get('tipo_entrega', '').upper()} {f"(Mesa {data.get('numero_mesa')})" if data.get('numero_mesa') else ''}
-Pago: {data.get('metodo_pago', '').upper()}
+Pago: {pago_det}
 ----------------------------------------
 """
         for it in data.get("items", []):
@@ -951,6 +1248,19 @@ TOTAL FACTURA:             {data.get('total_formateado'):>11}
             ticket_text += f"""Abonó con:                 ${int(data.get('paga_con', 0)):>10,}
 Vuelto:                    {data.get('vuelto_formateado'):>11}
 """
+        elif data.get("mp_payment_id"):
+            ticket_text += f"Comprobante MP:            {str(data.get('mp_payment_id')):>11}\n"
+        elif data.get("tarjeta_auth_code") or data.get("metodo_pago") == "tarjeta":
+            last4 = data.get("tarjeta_last4", "XXXX")
+            nom_tarj = data.get("tarjeta_nombre", "")
+            cuotas_cant = data.get("tarjeta_cuotas", 1)
+            ticket_text += f"Tarjeta:                   **** **** **** {last4}\n"
+            if nom_tarj:
+                ticket_text += f"Titular:                   {nom_tarj[:24]}\n"
+            ticket_text += f"Plan Cuotas:               {cuotas_cant} cuota(s)\n"
+            ticket_text += f"Voucher POS / Auth:        {str(data.get('tarjeta_auth_code', 'APROBADO')):>11}\n"
+        elif data.get("comprobante_transferencia"):
+            ticket_text += f"Transf. Bancaria:          {str(data.get('comprobante_transferencia')):>11}\n"
         ticket_text += f"""----------------------------------------
 CAE Nº: {cae_num}
 Vto. CAE: {cae_vto}
@@ -981,6 +1291,34 @@ Vto. CAE: {cae_vto}
         self.root.bind("<F2>", lambda e: self.entry_search.focus_set())
         self.root.bind("<F8>", lambda e: self._vaciar_comanda())
         self.root.bind("<F10>", lambda e: self._abrir_modal_cobro())
+        self.root.bind("<F11>", self._toggle_fullscreen)
+        self.root.bind("<Escape>", self._salir_fullscreen)
+
+    def _toggle_fullscreen(self, event=None):
+        self.is_fullscreen = not self.is_fullscreen
+        self.root.attributes("-fullscreen", self.is_fullscreen)
+        if self.is_fullscreen:
+            if hasattr(self, "btn_fullscreen"):
+                self.btn_fullscreen.config(
+                    text="🗗 Salir (F11)",
+                    bg="#FEF3C7",
+                    fg="#92400E"
+                )
+        else:
+            if hasattr(self, "btn_fullscreen"):
+                self.btn_fullscreen.config(
+                    text="🗖 Pantalla Completa (F11)",
+                    bg="#F1F5F9",
+                    fg=COLOR_TEXT
+                )
+            try:
+                self.root.state("zoomed")
+            except Exception:
+                pass
+
+    def _salir_fullscreen(self, event=None):
+        if self.is_fullscreen:
+            self._toggle_fullscreen()
 
     def _abrir_ventana_arqueo(self):
         from arqueo_window import ArqueoWindow
@@ -992,6 +1330,12 @@ Vto. CAE: {cae_vto}
 
     def _cerrar_sesion(self):
         if messagebox.askyesno("Cerrar Turno y Salir", "¿Deseas finalizar tu jornada laboral y registrar tu hora de salida?"):
+            if self.is_fullscreen:
+                try:
+                    self.root.attributes("-fullscreen", False)
+                    self.is_fullscreen = False
+                except Exception:
+                    pass
             emp_id = self.cajero_info.get("id")
             reg_id = self.cajero_info.get("idregistro_turno")
             try:

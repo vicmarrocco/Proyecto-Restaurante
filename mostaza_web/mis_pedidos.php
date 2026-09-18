@@ -27,12 +27,16 @@ $pedidos = $stmt->get_result();
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mis Pedidos · Mostaza</title>
-<link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="tienda.css">
-<link rel="stylesheet" href="checkout.css">
+<!-- Base Framework (Bootstrap) -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<!-- Google Fonts & Font Awesome -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<!-- Estilos Oficiales Mostaza (Sobrescriben Bootstrap) -->
+<link rel="stylesheet" href="style.css?v=<?= filemtime('style.css') ?>">
+<link rel="stylesheet" href="tienda.css?v=<?= filemtime('tienda.css') ?>">
+<link rel="stylesheet" href="checkout.css?v=<?= filemtime('checkout.css') ?>">
 </head>
 <body class="checkout-page">
 
@@ -68,9 +72,15 @@ $pedidos = $stmt->get_result();
                 $det = $stmtDet->get_result();
 
                 $badgeClass = 'badge-recibido';
-                if ($p['estado'] === 'En Cocina' || $p['estado'] === 'En Preparacion') $badgeClass = 'badge-cocina';
-                if ($p['estado'] === 'Listo' || $p['estado'] === 'En Camino') $badgeClass = 'badge-camino';
-                if ($p['estado'] === 'Entregado') $badgeClass = 'badge-entregado';
+                if (in_array($p['estado'], ['En Cocina', 'En Preparacion', 'En Preparación', 'Preparando'])) {
+                    $badgeClass = 'badge-cocina';
+                } elseif (in_array($p['estado'], ['Listo', 'Listo para Despacho', 'En Camino'])) {
+                    $badgeClass = 'badge-camino';
+                } elseif ($p['estado'] === 'Entregado') {
+                    $badgeClass = 'badge-entregado';
+                } elseif ($p['estado'] === 'Cancelado') {
+                    $badgeClass = 'badge-cancelado';
+                }
                 ?>
                 <div class="card-section" style="margin-bottom:0;">
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;border-bottom:1px solid #eee;padding-bottom:14px;margin-bottom:14px;">

@@ -6,7 +6,7 @@
 // ============================================================
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -15,6 +15,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once(__DIR__ . '/../../conexion.php');
 
+// Manejo de acciones POST (ocupar / desocupar mesas desde apps o API)
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $raw = file_get_contents('php://input');
+    $input = json_decode($raw, true) ?? $_POST;
+    $accion = $input['accion'] ?? '';
+    $numeroMesa = intval($input['numero_mesa'] ?? 0);
+    
+    if ($numeroMesa <= 0) {
+        echo json_encode(['ok' => false, 'error' => 'Número de mesa inválido']);
+        exit;
+    }
+    
+    if ($accion === 'ocupar') {
+        $conn->query("UPDATE mesa SET estado = 'ocupada' WHERE numero_mesa = $numeroMesa");
+        echo json_encode(['ok' => true, 'mensaje' => "Mesa #$numeroMesa marcada como ocupada"]);
+        exit;
+    }
+    
+    if ($accion === 'desocupar' || $accion === 'liberar') {
+        $conn->query("UPDATE mesa SET estado = 'disponible' WHERE numero_mesa = $numeroMesa");
+        $conn->query("UPDATE pedido_web SET estado = 'Entregado' WHERE tipo_entrega = 'salon' AND numero_mesa = $numeroMesa AND estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'Listo para Despacho', 'Listo')");
+        echo json_encode(['ok' => true, 'mensaje' => "Mesa #$numeroMesa desocupada y liberada"]);
+        exit;
+    }
+    
+    echo json_encode(['ok' => false, 'error' => 'Acción no reconocida: ' . htmlspecialchars($accion)]);
+    exit;
+}
+
 // 1. Obtener comandas activas en salón
 $stmtActive = $conn->query(
     "SELECT p.idpedido, p.numero_mesa, p.total, p.fecha, p.estado, p.idusuario, p.metodo_pago,
@@ -22,7 +51,7 @@ $stmtActive = $conn->query(
      FROM pedido_web p
      LEFT JOIN usuario_web u ON p.idusuario = u.idusuario
      WHERE p.tipo_entrega = 'salon' 
-       AND p.estado IN ('Recibido', 'En Cocina', 'Listo') 
+       AND p.estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'En Preparación', 'Listo para Despacho', 'Listo') 
        AND p.numero_mesa IS NOT NULL
      ORDER BY p.idpedido DESC"
 );
@@ -72,7 +101,7 @@ if ($stmtSec && $stmtSec->num_rows > 0) {
 }
 
 // 3. Obtener Mesas con sus Secciones
-$stmtMesas = $conn->query("SELECT m.idmesa, m.numero_mesa, m.fk_id_seccion, m.capacidad, s.nombre AS seccion_nombre, s.icono AS seccion_icono FROM mesa m JOIN seccion_mesa s ON m.fk_id_seccion = s.idseccion WHERE m.activa = 1 ORDER BY m.numero_mesa ASC");
+$stmtMesas = $conn->query("SELECT m.idmesa, m.numero_mesa, m.fk_id_seccion, m.capacidad, m.estado AS mesa_estado, s.nombre AS seccion_nombre, s.icono AS seccion_icono FROM mesa m JOIN seccion_mesa s ON m.fk_id_seccion = s.idseccion WHERE m.activa = 1 ORDER BY m.numero_mesa ASC");
 
 $mesas = [];
 $totalLibres = 0;
@@ -81,7 +110,8 @@ $totalOcupadas = 0;
 if ($stmtMesas && $stmtMesas->num_rows > 0) {
     while ($r = $stmtMesas->fetch_assoc()) {
         $numMesa = intval($r['numero_mesa']);
-        $ocupada = isset($mesasOcupadas[$numMesa]);
+        $tieneComanda = isset($mesasOcupadas[$numMesa]);
+        $ocupada = $tieneComanda || ($r['mesa_estado'] === 'ocupada');
         if ($ocupada) $totalOcupadas++; else $totalLibres++;
 
         $mesas[] = [
@@ -94,7 +124,7 @@ if ($stmtMesas && $stmtMesas->num_rows > 0) {
             'capacidad' => intval($r['capacidad']),
             'ocupada' => $ocupada,
             'estado_texto' => $ocupada ? 'OCUPADA' : 'DISPONIBLE',
-            'info' => $ocupada ? $mesasOcupadas[$numMesa] : null
+            'info' => $tieneComanda ? $mesasOcupadas[$numMesa] : ($ocupada ? ['cliente' => 'Clientes en mesa', 'idpedido' => '-', 'total_formateado' => '$0', 'estado' => 'Ocupada sin comanda', 'tiempo_texto' => 'En espera'] : null)
         ];
     }
 } else {

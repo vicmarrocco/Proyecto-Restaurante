@@ -49,17 +49,34 @@ try {
     $stmtC->execute();
     $enCamino = $stmtC->get_result()->fetch_assoc();
 
+    // 3. Métricas históricas completas del repartidor
+    $sqlTotal = "SELECT COUNT(*) as cant_total,
+                        COALESCE(SUM(total), 0) as total_historico
+                 FROM pedido_web
+                 WHERE tipo_entrega = 'delivery' AND estado = 'Entregado'";
+    if (!empty($repartidor)) {
+        $stmtT = $conn->prepare($sqlTotal . " AND repartidor_asignado = ?");
+        $stmtT->bind_param("s", $repartidor);
+    } else {
+        $stmtT = $conn->prepare($sqlTotal);
+    }
+    $stmtT->execute();
+    $totales = $stmtT->get_result()->fetch_assoc();
+
     echo json_encode([
         'ok' => true,
         'repartidor' => $repartidor ?: 'General',
         'entregados_hoy' => intval($stats['cant'] ?? 0),
+        'entregados_total' => intval($totales['cant_total'] ?? 0),
         'en_camino_actual' => intval($enCamino['cant_en_camino'] ?? 0),
         'efectivo_a_rendir' => floatval($stats['efectivo_recaudado'] ?? 0),
         'efectivo_a_rendir_formateado' => '$' . number_format($stats['efectivo_recaudado'] ?? 0, 0, ',', '.'),
         'total_propinas' => floatval($stats['total_propinas'] ?? 0),
         'total_propinas_formateado' => '$' . number_format($stats['total_propinas'] ?? 0, 0, ',', '.'),
         'total_facturado' => floatval($stats['total_facturado'] ?? 0),
-        'total_facturado_formateado' => '$' . number_format($stats['total_facturado'] ?? 0, 0, ',', '.')
+        'total_facturado_formateado' => '$' . number_format($stats['total_facturado'] ?? 0, 0, ',', '.'),
+        'total_historico' => floatval($totales['total_historico'] ?? 0),
+        'total_historico_formateado' => '$' . number_format($totales['total_historico'] ?? 0, 0, ',', '.')
     ]);
 
 } catch (Exception $e) {

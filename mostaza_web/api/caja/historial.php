@@ -16,15 +16,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once(__DIR__ . '/../../conexion.php');
 
 $limite = intval($_GET['limite'] ?? 30);
+$numeroCaja = intval($_GET['numero_caja'] ?? 0);
 
-$stmt = $conn->query("SELECT * FROM caja_arqueo ORDER BY idarqueo DESC LIMIT $limite");
+$sql = "SELECT * FROM caja_arqueo";
+if ($numeroCaja > 0) {
+    $sql .= " WHERE numero_caja = $numeroCaja";
+}
+$sql .= " ORDER BY idarqueo DESC LIMIT $limite";
+$stmt = $conn->query($sql);
 
 $historial = [];
 if ($stmt) {
     while ($c = $stmt->fetch_assoc()) {
         $montoIni = floatval($c['monto_inicial']);
         $vEfectivo = floatval($c['ventas_efectivo']);
-        $totEsperado = $montoIni + $vEfectivo;
+        $montoRetiros = floatval($c['monto_retiros'] ?? 0);
+        $totEsperado = max(0, $montoIni + $vEfectivo - $montoRetiros);
         $montoFisico = ($c['monto_fisico_cierre'] !== null) ? floatval($c['monto_fisico_cierre']) : null;
         $diff = ($c['diferencia'] !== null) ? floatval($c['diferencia']) : null;
 
@@ -37,6 +44,8 @@ if ($stmt) {
 
         $historial[] = [
             'idarqueo' => intval($c['idarqueo']),
+            'numero_caja' => intval($c['numero_caja'] ?? 1),
+            'terminal_nombre' => $c['terminal_nombre'] ?: ('Caja ' . ($c['numero_caja'] ?? 1)),
             'cajero' => $c['cajero'],
             'turno' => $c['turno'],
             'estado' => $c['estado'],

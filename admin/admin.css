@@ -1,0 +1,531 @@
+/* ============================================================
+   admin/admin.css
+   Estilos Oficiales para el Panel de Gestión y Control Mostaza POS
+   Paleta Profesional Base Blanca:
+   - Tarjetas: #FFFFFF con bordes #E2E8F0
+   - Fondo de lienzo: #F8FAFC
+   - Acentos: Rojo Mostaza (#A30002) y Oro Mostaza (#FBB728)
+   - Tipografía: #0F172A (Alta Legibilidad)
+   ============================================================ */
+
+:root {
+  --admin-rojo: #A30002;
+  --admin-rojo-hover: #820002;
+  --admin-amarillo: #FBB728;
+  --admin-dark: #0F172A;
+  --admin-card: #FFFFFF;
+  --admin-sidebar: #FFFFFF;
+  --admin-bg: #F8FAFC;
+  --admin-text: #0F172A;
+  --admin-muted: #64748B;
+  --admin-border: #E2E8F0;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+  --info: #3B82F6;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body.admin-body {
+  font-family: 'Montserrat', sans-serif;
+  background: var(--admin-bg);
+  color: var(--admin-text);
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.admin-sidebar {
+  width: 260px;
+  background: var(--admin-sidebar);
+  color: var(--admin-text);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 100;
+  border-right: 1px solid var(--admin-border);
+  box-shadow: 2px 0 10px rgba(0,0,0,0.03);
+}
+
+.sidebar-brand {
+  padding: 22px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.sidebar-brand img {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+}
+
+.sidebar-brand h2 {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: var(--admin-rojo);
+  letter-spacing: 0.5px;
+  line-height: 1.1;
+}
+
+.sidebar-brand span {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #B45309;
+  display: block;
+}
+
+.sidebar-nav {
+  list-style: none;
+  padding: 16px 12px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sidebar-nav li {
+  margin-bottom: 5px;
+}
+
+.sidebar-nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  color: #64748B;
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 700;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.sidebar-nav a:hover {
+  background: #F1F5F9;
+  color: var(--admin-rojo);
+}
+
+.sidebar-nav a.active {
+  background: var(--admin-rojo);
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(163, 0, 2, 0.3);
+}
+
+.sidebar-nav a i {
+  font-size: 1.05rem;
+  width: 20px;
+  text-align: center;
+}
+
+.sidebar-footer {
+  padding: 16px;
+  border-top: 1px solid var(--admin-border);
+  font-size: 0.78rem;
+  color: #94A3B8;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* Main Content Area */
+.admin-main {
+  margin-left: 260px;
+  flex: 1;
+  padding: 30px;
+  max-width: calc(100vw - 260px);
+}
+
+.admin-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.admin-topbar h1 {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--admin-dark);
+  letter-spacing: -0.5px;
+}
+
+.admin-topbar p {
+  color: #64748B;
+  font-size: 0.88rem;
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.admin-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* KPI Cards Grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+@media (max-width: 1100px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.kpi-card {
+  background: #FFFFFF;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+  border: 1px solid var(--admin-border);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: transform 0.2s ease;
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+}
+
+.kpi-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+}
+
+.kpi-icon.red { background: #FEE2E2; color: #DC2626; }
+.kpi-icon.yellow { background: #FEF3C7; color: #D97706; }
+.kpi-icon.green { background: #DCFCE7; color: #16A34A; }
+.kpi-icon.blue { background: #DBEAFE; color: #2563EB; }
+
+.kpi-info h3 {
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: var(--admin-dark);
+  margin-bottom: 2px;
+  letter-spacing: -0.5px;
+}
+
+.kpi-info span {
+  font-size: 0.8rem;
+  color: #64748B;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Cards & Tablas */
+.admin-card {
+  background: #FFFFFF;
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+  border: 1px solid var(--admin-border);
+  margin-bottom: 24px;
+}
+
+.admin-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.admin-card-header h2 {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--admin-dark);
+}
+
+.admin-table-wrapper {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--admin-border);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.admin-table th {
+  background: #F8FAFC;
+  color: #475569;
+  font-weight: 800;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--admin-border);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.admin-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--admin-border);
+  vertical-align: middle;
+  color: #1E293B;
+}
+
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-table tr:hover td {
+  background: #F8FAFC;
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.badge-success { background: #DCFCE7; color: #166534; }
+.badge-danger { background: #FEE2E2; color: #991B1B; }
+.badge-warning { background: #FEF3C7; color: #92400E; }
+.badge-info { background: #DBEAFE; color: #1E40AF; }
+.badge-muted { background: #F1F5F9; color: #475569; }
+
+/* Botones */
+.btn-admin {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.btn-admin-red {
+  background: var(--admin-rojo);
+  color: #FFFFFF;
+}
+
+.btn-admin-red:hover {
+  background: var(--admin-rojo-hover);
+}
+
+.btn-admin-white {
+  background: #FFFFFF;
+  color: #0F172A;
+  border-color: #CBD5E1;
+}
+
+.btn-admin-white:hover {
+  background: #F1F5F9;
+}
+
+.btn-admin-sm {
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  border-radius: 6px;
+}
+
+/* Forms */
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #334155;
+  margin-bottom: 6px;
+}
+
+.form-control {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #CBD5E1;
+  background: #FFFFFF;
+  color: #0F172A;
+  font-family: inherit;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-control:focus {
+  border-color: var(--admin-rojo);
+  box-shadow: 0 0 0 3px rgba(163, 0, 2, 0.1);
+}
+
+/* POS - Mapa de Mesas */
+.pos-tables-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.pos-table-btn {
+  background: #FFFFFF;
+  border: 2px solid #10B981;
+  border-radius: 14px;
+  padding: 18px 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+
+.pos-table-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+
+.pos-table-btn.occupied {
+  border-color: #EF4444;
+  background: #FEF2F2;
+}
+
+.pos-table-btn.selected {
+  border-color: var(--admin-rojo);
+  background: #FEF2F2;
+  box-shadow: 0 0 0 3px rgba(163, 0, 2, 0.2);
+}
+
+.pos-table-btn i {
+  font-size: 1.8rem;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.pos-table-btn strong {
+  display: block;
+  font-size: 1.05rem;
+  color: #0F172A;
+}
+
+.pos-table-btn span {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748B;
+}
+
+/* KDS - Kitchen Display System */
+.kds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.kds-ticket {
+  background: #FFFFFF;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+}
+
+.kds-ticket.urgente {
+  border-color: #EF4444;
+  background: #FFFDFD;
+}
+
+.kds-ticket.preparando {
+  border-color: #F59E0B;
+  background: #FFFDF5;
+}
+
+.kds-ticket.listo {
+  border-color: #10B981;
+  background: #F6FEF9;
+}
+
+.kds-ticket-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #E2E8F0;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.kds-ticket-header strong {
+  font-size: 1.2rem;
+  color: var(--admin-rojo);
+  font-weight: 900;
+}
+
+.kds-timer {
+  background: #FEF3C7;
+  color: #92400E;
+  padding: 4px 10px;
+  border-radius: 50px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.kds-item-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.kds-item-mods {
+  font-size: 0.78rem;
+  color: #DC2626;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.btn-kds {
+  width: 100%;
+  border: none;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 0.92rem;
+  cursor: pointer;
+  margin-top: 14px;
+  transition: all 0.2s;
+}
+
+.btn-kds-cook {
+  background: #F59E0B;
+  color: #000;
+}
+
+.btn-kds-ready {
+  background: #10B981;
+  color: #fff;
+}

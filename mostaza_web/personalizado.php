@@ -1,17 +1,24 @@
 <?php
 session_start();
 require('conexion.php');
-$paginaActiva = 'productos';
+$paginaActiva = 'personalizado';
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pedidos Personalizados - Mostaza</title>
-  <link rel="stylesheet" href="perso.css" />
-  <link rel="stylesheet" href="tienda.css" />
+  <title>Simulador 3D: Armá tu Hamburguesa · Mostaza Argentina</title>
+  <!-- Base Framework (Bootstrap) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Google Fonts & Font Awesome -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Estilos Oficiales Mostaza (Sobrescriben Bootstrap) -->
+  <link rel="stylesheet" href="style.css?v=<?= filemtime('style.css') ?>" />
+  <link rel="stylesheet" href="perso.css?v=<?= filemtime('perso.css') ?>" />
+  <link rel="stylesheet" href="tienda.css?v=<?= filemtime('tienda.css') ?>" />
 </head>
 <body>
 
@@ -136,13 +143,16 @@ $paginaActiva = 'productos';
 
           <ul class="ingredient-list">
 
-            <!-- Switch: Pan -->
-            <li class="ingredient-item">
+            <!-- Switch: Pan (Obligatorio) -->
+            <li class="ingredient-item obligatorio" style="background:#FFFBEB;border-left:4px solid #F59E0B;padding-left:12px;">
               <div class="ing-icon">🍞</div>
-              <span class="ing-name">Pan</span>
-              <label class="switch">
-                <input type="checkbox" id="toggle-pan" data-layer="pan" checked />
-                <span class="slider"></span>
+              <div style="flex:1;">
+                <span class="ing-name" style="font-weight:700;">Pan Tostado Mostaza</span>
+                <span style="font-size:0.72rem;color:#B45309;font-weight:800;display:block;">BASE OBLIGATORIA (No se puede quitar)</span>
+              </div>
+              <label class="switch" style="cursor:not-allowed;" title="El pan es la base de la hamburguesa">
+                <input type="checkbox" id="toggle-pan" data-layer="pan" checked disabled />
+                <span class="slider" style="background:#16A34A;cursor:not-allowed;"></span>
               </label>
             </li>
 
@@ -233,10 +243,99 @@ $paginaActiva = 'productos';
         </div><!-- /panel-card -->
 
 
-        <!-- ---- SECCIÓN 2: Acompañamientos ---- -->
+        <!-- ---- SECCIÓN 2: Aderezos y Salsas ---- -->
         <div class="panel-card">
           <div class="panel-header">
             <span class="panel-num">2</span>
+            <h2>ELEGÍ TUS ADEREZOS & SALSAS</h2>
+          </div>
+
+          <ul class="ingredient-list">
+            <!-- Mayonesa -->
+            <li class="ingredient-item">
+              <div class="ing-icon">🥫</div>
+              <div style="flex:1;">
+                <span class="ing-name">Mayonesa Clásica</span>
+                <span style="font-size:0.75rem;color:#16A34A;font-weight:700;display:block;">Sin cargo · $0</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" class="toggle-aderezo" data-aderezo="mayonesa" checked />
+                <span class="slider"></span>
+              </label>
+            </li>
+
+            <!-- Ketchup -->
+            <li class="ingredient-item">
+              <div class="ing-icon">🍅</div>
+              <div style="flex:1;">
+                <span class="ing-name">Ketchup Mostaza</span>
+                <span style="font-size:0.75rem;color:#16A34A;font-weight:700;display:block;">Sin cargo · $0</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" class="toggle-aderezo" data-aderezo="ketchup" checked />
+                <span class="slider"></span>
+              </label>
+            </li>
+
+            <!-- Mostaza Suave & Dulce -->
+            <li class="ingredient-item">
+              <div class="ing-icon">🟡</div>
+              <div style="flex:1;">
+                <span class="ing-name">Mostaza Suave & Dulce</span>
+                <span style="font-size:0.75rem;color:#16A34A;font-weight:700;display:block;">Sin cargo · $0</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" class="toggle-aderezo" data-aderezo="mostaza" checked />
+                <span class="slider"></span>
+              </label>
+            </li>
+
+            <!-- Barbacoa BBQ -->
+            <li class="ingredient-item">
+              <div class="ing-icon">🍯</div>
+              <div style="flex:1;">
+                <span class="ing-name">Barbacoa Ahumada (BBQ)</span>
+                <span style="font-size:0.75rem;color:var(--rojo);font-weight:700;display:block;">+$300</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" class="toggle-aderezo" data-aderezo="barbacoa" />
+                <span class="slider"></span>
+              </label>
+            </li>
+
+            <!-- Cheddar Fundido -->
+            <li class="ingredient-item">
+              <div class="ing-icon">🧀</div>
+              <div style="flex:1;">
+                <span class="ing-name">Salsa Cheddar Fundido</span>
+                <span style="font-size:0.75rem;color:var(--rojo);font-weight:700;display:block;">+$450</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" class="toggle-aderezo" data-aderezo="cheddar" />
+                <span class="slider"></span>
+              </label>
+            </li>
+
+            <!-- Salsa Especial Mostaza -->
+            <li class="ingredient-item">
+              <div class="ing-icon">⭐</div>
+              <div style="flex:1;">
+                <span class="ing-name">Salsa Especial Mostaza (Mega)</span>
+                <span style="font-size:0.75rem;color:var(--rojo);font-weight:700;display:block;">+$350</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" class="toggle-aderezo" data-aderezo="salsa_especial" />
+                <span class="slider"></span>
+              </label>
+            </li>
+          </ul>
+        </div><!-- /panel-card -->
+
+
+        <!-- ---- SECCIÓN 3: Acompañamientos ---- -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <span class="panel-num">3</span>
             <h2>ELEGÍ TUS ACOMPAÑAMIENTOS</h2>
           </div>
 

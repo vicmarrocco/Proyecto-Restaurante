@@ -47,12 +47,16 @@ $ingredientes = $prod['ingredientes'] ?: 'Carne 100% vacuna, queso seleccionado,
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= htmlspecialchars($prod['nombre']) ?> · Detalles · Mostaza</title>
-<link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="tienda.css">
-<link rel="stylesheet" href="checkout.css">
+<!-- Base Framework (Bootstrap) -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<!-- Google Fonts & Font Awesome -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<!-- Estilos Oficiales Mostaza (Sobrescriben Bootstrap) -->
+<link rel="stylesheet" href="style.css?v=<?= filemtime('style.css') ?>">
+<link rel="stylesheet" href="tienda.css?v=<?= filemtime('tienda.css') ?>">
+<link rel="stylesheet" href="checkout.css?v=<?= filemtime('checkout.css') ?>">
 <style>
 .detail-container {
     max-width: 1100px;
@@ -93,12 +97,13 @@ $ingredientes = $prod['ingredientes'] ?: 'Carne 100% vacuna, queso seleccionado,
 }
 .detail-category-badge {
     display: inline-block;
-    background: #DCFCE7;
-    color: #16A34A;
+    background: #FEF3C7;
+    color: #92400E;
+    border: 1px solid #FDE68A;
     font-size: 0.8rem;
     font-weight: 800;
     text-transform: uppercase;
-    padding: 4px 12px;
+    padding: 5px 14px;
     border-radius: 20px;
     margin-bottom: 12px;
 }
@@ -210,7 +215,7 @@ $ingredientes = $prod['ingredientes'] ?: 'Carne 100% vacuna, queso seleccionado,
 .btn-add-detail:hover { background: #870002; color: #fff; }
 </style>
 </head>
-<body class="checkout-page">
+<body class="checkout-page" style="background:var(--crema);">
 
 <?php include('includes/header.php'); ?>
 
@@ -245,7 +250,7 @@ $ingredientes = $prod['ingredientes'] ?: 'Carne 100% vacuna, queso seleccionado,
 
             <!-- Alérgenos e Información Nutricional (R12) -->
             <div class="info-section">
-                <h4><i class="fa-solid fa-heart-pulse" style="color:#2563EB;"></i> Información Nutricional y Alérgenos:</h4>
+                <h4><i class="fa-solid fa-heart-pulse" style="color:var(--rojo);"></i> Información Nutricional y Alérgenos:</h4>
                 <p>
                     🔥 Valor energético: <strong>~<?= $calorias ?> kcal</strong><br>
                     <span class="allergens-tag">⚠️ Alérgenos: <?= htmlspecialchars($alergenos) ?></span>
@@ -254,12 +259,14 @@ $ingredientes = $prod['ingredientes'] ?: 'Carne 100% vacuna, queso seleccionado,
 
             <!-- Formulario de Agregado al Carrito (R11) -->
             <?php if ($logueado): ?>
-                <form method="post" action="agregar_carrito.php">
+                <form method="post" action="agregar_carrito.php" onsubmit="agregarAlCarritoDetail(this, event)">
                     <input type="hidden" name="idproducto" value="<?= $prod['idproducto'] ?>">
                     <input type="hidden" name="volver" value="detalle_producto.php?id=<?= $prod['idproducto'] ?>">
 
                     <div style="margin-bottom:12px;">
-                        <label style="font-size:0.85rem;font-weight:700;color:#475569;display:block;margin-bottom:6px;">Aclaraciones para la cocina (Opcional):</label>
+                        <label style="font-size:0.85rem;font-weight:700;color:#475569;display:block;margin-bottom:6px;">
+                            <i class="fa-solid fa-pen-to-square"></i> Aclaraciones para la cocina (Opcional):
+                        </label>
                         <input type="text" name="modificadores" placeholder="Ej: Sin cebolla, extra aderezo, etc." 
                                style="width:100%;padding:10px 14px;border-radius:10px;border:1px solid #CBD5E1;font-size:0.9rem;">
                     </div>
@@ -285,6 +292,94 @@ $ingredientes = $prod['ingredientes'] ?: 'Carne 100% vacuna, queso seleccionado,
     </div>
 </div>
 
+<!-- SECCIÓN PRODUCTOS RECOMENDADOS -->
+<?php if ($relacionados && $relacionados->num_rows > 0): ?>
+<section class="related-products-section">
+    <div class="related-header">
+        <div>
+            <span style="font-size:0.75rem;font-weight:800;color:var(--rojo);text-transform:uppercase;letter-spacing:1px;">El maridaje perfecto</span>
+            <h3 style="margin-top:2px;font-size:1.5rem;font-weight:900;">También te recomendamos probar</h3>
+        </div>
+        <a href="categoria.php?cat=<?= urlencode($prod['categoria']) ?>" style="font-size:0.85rem;font-weight:800;color:var(--rojo);display:flex;align-items:center;gap:6px;">
+            Ver toda la categoría <i class="fa-solid fa-arrow-right"></i>
+        </a>
+    </div>
+
+    <div class="products-modern-grid">
+        <?php while ($r = $relacionados->fetch_assoc()): 
+            $rImg = $r['imagen'] ?? 'image-removebg-preview.png';
+            if (strpos($rImg, 'img/') !== 0 && strpos($rImg, 'http') !== 0) $rImg = 'img/' . $rImg;
+        ?>
+        <article class="modern-product-card">
+            <div class="product-img-wrapper">
+                <span class="product-flag">Recomendado</span>
+                <a href="detalle_producto.php?id=<?= $r['idproducto'] ?>" title="Ver detalles">
+                    <img src="<?= htmlspecialchars($rImg) ?>" alt="<?= htmlspecialchars($r['nombre']) ?>" loading="lazy" onerror="this.src='img/image-removebg-preview.png'">
+                </a>
+            </div>
+            <div class="product-body">
+                <span class="product-cat-name"><?= htmlspecialchars(ucfirst($r['categoria'])) ?></span>
+                <h3 class="product-name">
+                    <a href="detalle_producto.php?id=<?= $r['idproducto'] ?>"><?= htmlspecialchars($r['nombre']) ?></a>
+                </h3>
+                <p class="product-snippet"><?= htmlspecialchars($r['descripcion'] ?: 'Preparado al instante con la mejor calidad.') ?></p>
+                <div class="product-footer">
+                    <div class="product-price-box">
+                        <span class="price-currency">PRECIO</span>
+                        <span class="price-amount">$<?= number_format($r['precio'], 0, ',', '.') ?></span>
+                    </div>
+                    <button type="button" class="btn-add-fast" onclick="agregarCarritoAjax(<?= $r['idproducto'] ?>, 1, this)">
+                        <i class="fa-solid fa-cart-plus"></i> Pedir
+                    </button>
+                </div>
+            </div>
+        </article>
+        <?php endwhile; ?>
+    </div>
+</section>
+<?php endif; ?>
+
 <?php include('includes/footer.php'); ?>
+
+<script>
+function agregarAlCarritoDetail(form, e) {
+    e.preventDefault();
+    const btn = form.querySelector('button[type="submit"]');
+    const originalContent = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Agregando...';
+
+    const formData = new FormData(form);
+    formData.append('ajax', '1');
+
+    fetch('agregar_carrito.php', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: new URLSearchParams(formData)
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalContent;
+        if (data.ok) {
+            mostrarToast('¡Agregado!', data.mensaje || 'Se sumó a tu pedido.');
+            const badge = document.getElementById('headerCartCount');
+            if (badge) {
+                badge.innerText = data.total_items;
+                badge.style.display = 'inline-block';
+            }
+            const totalH = document.querySelector('.btn-cart-header .cart-total');
+            if (totalH && data.total_formateado) {
+                totalH.innerText = data.total_formateado;
+            }
+        } else {
+            mostrarToast('Atención', data.error || 'No se pudo agregar.');
+        }
+    })
+    .catch(() => {
+        form.submit();
+    });
+}
+</script>
 </body>
 </html>

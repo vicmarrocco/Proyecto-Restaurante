@@ -21,13 +21,15 @@ export interface ComandaCocina {
 
 export interface Receta {
   idreceta: number;
-  nombre_plato: string;
+  idproducto?: number;
+  nombre: string;
   categoria: string;
-  tiempo_preparacion_min: number;
+  tiempo: string;
+  tiempo_min: number;
   dificultad: string;
-  ingredientes_lista: string;
-  pasos_preparacion: string;
-  temperatura_coccion: string;
+  ingredientes: string;
+  pasos: string;
+  temperatura: string;
 }
 
 export interface StockInsumo {
@@ -37,4 +39,9 @@ export interface StockInsumo {
   unidad_medida: string;
   stock_actual: number;
   stock_minimo: number;
+  alerta: boolean;
+  actual_texto?: string;
+  minimo_texto?: string;
+  costo_unitario?: number;
+  proveedor?: string;
 }

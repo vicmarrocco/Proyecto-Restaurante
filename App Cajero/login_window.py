@@ -13,10 +13,21 @@ class LoginWindow:
     def __init__(self, root, on_login_success):
         self.root = root
         self.on_login_success = on_login_success
+
+        # Asegurar estado de ventana normal para el diálogo de login
+        try:
+            self.root.attributes("-fullscreen", False)
+        except Exception:
+            pass
+        try:
+            self.root.state("normal")
+        except Exception:
+            pass
+
         self.root.title("Mostaza · Terminal de Cajero POS")
         self.root.geometry("540x720")
         self.root.resizable(False, False)
-        self.root.configure(bg=COLOR_SIDEBAR)
+        self.root.configure(bg=COLOR_LIGHT_BG)
 
         # Centrar ventana en pantalla
         self._center_window()
@@ -40,7 +51,7 @@ class LoginWindow:
             w.destroy()
 
         # Contenedor Tarjeta Blanca Central
-        self.card = tk.Frame(self.root, bg=COLOR_WHITE, padx=30, pady=24, relief="flat")
+        self.card = tk.Frame(self.root, bg=COLOR_WHITE, padx=30, pady=24, relief="solid", bd=1, highlightbackground=COLOR_BORDER, highlightthickness=1)
         self.card.place(relx=0.5, rely=0.5, anchor="center", width=480, height=660)
 
         # Encabezado con Marca (R13: Ver Pantalla de Bienvenida)
@@ -153,7 +164,7 @@ class LoginWindow:
 
         self.btn_solicitar = tk.Button(
             self.content_frame,
-            text="✉ SOLICITAR CÓDIGO DE ACCESO",
+            text="✉ ENVIAR CÓDIGO DE ACCESO",
             font=(FONT_FAMILY, 11, "bold"),
             bg=COLOR_ROJO,
             fg=COLOR_WHITE,
@@ -163,38 +174,7 @@ class LoginWindow:
             cursor="hand2",
             command=self._solicitar_codigo
         )
-        self.btn_solicitar.pack(fill="x", ipady=10, pady=(0, 12))
-
-        # Botón de Login Directo / Demo para contingencia
-        lbl_demo = tk.Label(
-            self.content_frame,
-            text="O seleccioná un perfil rápido para iniciar turno:",
-            font=(FONT_FAMILY, 9, "bold"),
-            fg=COLOR_TEXT_MUTED,
-            bg=COLOR_WHITE,
-            anchor="w"
-        )
-        lbl_demo.pack(fill="x", pady=(8, 6))
-
-        demo_frame = tk.Frame(self.content_frame, bg=COLOR_WHITE)
-        demo_frame.pack(fill="x", pady=(0, 10))
-
-        btn_cajero1 = tk.Button(
-            demo_frame,
-            text="👤 Alberto Gómez (Cajero Principal)",
-            font=(FONT_FAMILY, 9),
-            bg=COLOR_LIGHT_BG,
-            fg=COLOR_TEXT,
-            relief="groove",
-            cursor="hand2",
-            command=lambda: self._set_email_and_submit("applegomez64@gmail.com")
-        )
-        btn_cajero1.pack(fill="x", pady=2)
-
-    def _set_email_and_submit(self, email):
-        self.entry_email.delete(0, tk.END)
-        self.entry_email.insert(0, email)
-        self._solicitar_codigo()
+        self.btn_solicitar.pack(fill="x", ipady=12, pady=(0, 12))
 
     def _solicitar_codigo(self):
         email = self.entry_email.get().strip()
@@ -212,7 +192,7 @@ class LoginWindow:
         threading.Thread(target=run_req, daemon=True).start()
 
     def _on_solicitar_res(self, res):
-        self.btn_solicitar.config(state="normal", text="✉ SOLICITAR CÓDIGO DE ACCESO")
+        self.btn_solicitar.config(state="normal", text="✉ ENVIAR CÓDIGO DE ACCESO")
         if res.get("ok"):
             self.paso = "codigo"
             self._build_ui()

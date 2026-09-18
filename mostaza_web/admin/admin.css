@@ -11,12 +11,12 @@
 :root {
   --admin-rojo: #A30002;
   --admin-amarillo: #FBB728;
-  --admin-dark: #111827;
-  --admin-card: #1F2937;
-  --admin-sidebar: #0F172A;
-  --admin-bg: #F3F4F6;
-  --admin-text: #1F2937;
-  --admin-border: #E5E7EB;
+  --admin-dark: #0F172A;
+  --admin-card: #FFFFFF;
+  --admin-sidebar: #FFFFFF;
+  --admin-bg: #F8FAFC;
+  --admin-text: #0F172A;
+  --admin-border: #E2E8F0;
   --success: #10B981;
   --warning: #F59E0B;
   --danger: #EF4444;
@@ -36,7 +36,7 @@ body.admin-body {
 .admin-sidebar {
   width: 260px;
   background: var(--admin-sidebar);
-  color: #fff;
+  color: var(--admin-text);
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -44,14 +44,15 @@ body.admin-body {
   bottom: 0;
   left: 0;
   z-index: 100;
-  box-shadow: 4px 0 15px rgba(0,0,0,0.15);
+  border-right: 1px solid var(--admin-border);
+  box-shadow: 2px 0 10px rgba(0,0,0,0.03);
 }
 .sidebar-brand {
   padding: 24px 20px;
   display: flex;
   align-items: center;
   gap: 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid var(--admin-border);
 }
 .sidebar-brand img {
   width: 40px;
@@ -60,13 +61,14 @@ body.admin-body {
 }
 .sidebar-brand h2 {
   font-size: 1.15rem;
-  font-weight: 800;
-  color: #fff;
-  letter-spacing: 1px;
+  font-weight: 900;
+  color: var(--admin-rojo);
+  letter-spacing: 0.5px;
 }
 .sidebar-brand span {
   font-size: 0.7rem;
-  color: var(--admin-amarillo);
+  font-weight: 800;
+  color: #B45309;
   display: block;
 }
 
@@ -84,21 +86,21 @@ body.admin-body {
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  color: #94A3B8;
+  color: #64748B;
   text-decoration: none;
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 700;
   border-radius: 10px;
   transition: all 0.2s;
 }
 .sidebar-nav a:hover {
-  background: rgba(255,255,255,0.08);
-  color: #fff;
+  background: #F1F5F9;
+  color: var(--admin-rojo);
 }
 .sidebar-nav a.active {
   background: var(--admin-rojo);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(163, 0, 2, 0.4);
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(163, 0, 2, 0.35);
 }
 .sidebar-nav a i {
   font-size: 1.1rem;
@@ -108,9 +110,9 @@ body.admin-body {
 
 .sidebar-footer {
   padding: 16px;
-  border-top: 1px solid rgba(255,255,255,0.1);
+  border-top: 1px solid var(--admin-border);
   font-size: 0.8rem;
-  color: #64748B;
+  color: #94A3B8;
   text-align: center;
 }
 
@@ -232,8 +234,8 @@ body.admin-body {
 
 /* KDS - Kitchen Display System */
 .kds-body {
-  background: #0B0F19;
-  color: #F3F4F6;
+  background: #F1F5F9;
+  color: #0F172A;
 }
 .kds-grid {
   display: grid;
@@ -241,44 +243,47 @@ body.admin-body {
   gap: 20px;
 }
 .kds-ticket {
-  background: #1E293B;
-  border: 2px solid #334155;
+  background: #FFFFFF;
+  border: 1.5px solid #E2E8F0;
   border-radius: 14px;
   padding: 18px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
 }
 .kds-ticket.urgente {
   border-color: #EF4444;
+  background: #FFF5F5;
 }
 .kds-ticket.preparando {
   border-color: #F59E0B;
+  background: #FFFDF0;
 }
 .kds-ticket.listo {
   border-color: #10B981;
+  background: #F0FDF4;
 }
 
 .kds-ticket-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #334155;
+  border-bottom: 1px solid #E2E8F0;
   padding-bottom: 10px;
   margin-bottom: 12px;
 }
 .kds-ticket-header strong {
   font-size: 1.25rem;
-  color: #FBB728;
+  color: var(--admin-rojo);
 }
 .kds-timer {
-  background: #334155;
-  color: #fff;
+  background: #FEF3C7;
+  color: #92400E;
   padding: 4px 10px;
   border-radius: 50px;
   font-size: 0.8rem;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .kds-item-row {
@@ -289,7 +294,7 @@ body.admin-body {
 }
 .kds-item-mods {
   font-size: 0.8rem;
-  color: #F87171;
+  color: #DC2626;
   font-weight: 700;
   margin-top: 2px;
 }

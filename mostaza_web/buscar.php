@@ -1,6 +1,12 @@
 <?php
 // ============================================================
 // buscar.php
-// Redirige o muestra los resultados de búsqueda en categoria.php.
+// Redirige al catálogo de productos con el parámetro de búsqueda
 // ============================================================
-require_once('categoria.php');
+$q = trim($_GET['q'] ?? '');
+if ($q !== '') {
+    header("Location: productos.php?q=" . urlencode($q));
+    exit();
+}
+header("Location: productos.php");
+exit();

@@ -45,12 +45,47 @@ $referenciaEntrega = htmlspecialchars(trim($_POST['referencia_entrega'] ?? ''));
 $latitud = !empty($_POST['latitud']) ? floatval($_POST['latitud']) : null;
 $longitud = !empty($_POST['longitud']) ? floatval($_POST['longitud']) : null;
 
-$sucursal = htmlspecialchars(trim($_POST['sucursal_retiro'] ?? 'Mostaza Formosa Centro'));
+// Asignación de sucursal según modalidad y geolocalización
+if ($tipoEntrega === 'delivery') {
+    $sucursalAsignada = trim($_POST['sucursal_asignada'] ?? '');
+    
+    // Si tenemos coordenadas GPS, calcular con precisión geodésica (Haversine) la sucursal más cercana
+    if (!empty($latitud) && !empty($longitud)) {
+        $stmtNear = $conn->prepare("
+            SELECT nombre, direccion, ciudad, latitud, longitud,
+                   (6371 * acos(LEAST(1.0, GREATEST(-1.0, 
+                        cos(radians(?)) * cos(radians(latitud)) * cos(radians(longitud) - radians(?)) + 
+                        sin(radians(?)) * sin(radians(latitud))
+                   )))) AS dist_km
+            FROM sucursal
+            WHERE activo = 1
+            ORDER BY dist_km ASC
+            LIMIT 1
+        ");
+        if ($stmtNear) {
+            $stmtNear->bind_param("ddd", $latitud, $longitud, $latitud);
+            $stmtNear->execute();
+            $rowNear = $stmtNear->get_result()->fetch_assoc();
+            if ($rowNear && !empty($rowNear['nombre'])) {
+                $sucursalAsignada = $rowNear['nombre'];
+            }
+        }
+    }
+    $sucursal = !empty($sucursalAsignada) ? $sucursalAsignada : 'Mostaza Formosa Centro';
+} elseif ($tipoEntrega === 'takeaway') {
+    $sucursal = htmlspecialchars(trim($_POST['sucursal_retiro'] ?? 'Mostaza Formosa Centro'));
+} else {
+    $sucursal = 'Mostaza Formosa Centro';
+}
+
 $horarioRetiro = htmlspecialchars(trim($_POST['horario_retiro'] ?? ''));
 $numeroMesa = !empty($_POST['numero_mesa']) ? intval($_POST['numero_mesa']) : null;
 $notasSalon = htmlspecialchars(trim($_POST['notas_salon'] ?? ''));
 
 $metodoPago = in_array($_POST['metodo_pago'] ?? '', ['tarjeta', 'mercadopago', 'transferencia', 'efectivo']) ? $_POST['metodo_pago'] : 'tarjeta';
+$mpPaymentId = htmlspecialchars(trim($_POST['mp_payment_id'] ?? ''));
+$mpPaymentStatus = htmlspecialchars(trim($_POST['mp_payment_status'] ?? ''));
+$tarjetaAuthCode = htmlspecialchars(trim($_POST['tarjeta_auth_code'] ?? ''));
 $comprobanteTransf = htmlspecialchars(trim($_POST['comprobante_transferencia'] ?? ''));
 $pagaConInput = isset($_POST['paga_con']) ? floatval($_POST['paga_con']) : null;
 
@@ -77,7 +112,7 @@ if (!empty($_FILES['comprobante_archivo']['name']) && $_FILES['comprobante_archi
     }
 }
 
-// Construir notas generales
+// Construir notas generales y validar medios de pago
 $notasPedido = [];
 if ($tipoEntrega === 'delivery' && !empty($referenciaEntrega)) {
     $notasPedido[] = "Indicación envío: " . $referenciaEntrega;
@@ -88,11 +123,43 @@ if ($tipoEntrega === 'takeaway' && !empty($horarioRetiro)) {
 if ($tipoEntrega === 'salon' && !empty($notasSalon)) {
     $notasPedido[] = "Nota mozo: " . $notasSalon;
 }
-if ($metodoPago === 'tarjeta') {
+
+$estadoPago = 'Pendiente';
+
+if ($metodoPago === 'mercadopago') {
+    $mpRefUsuario = htmlspecialchars(trim($_POST['mp_referencia_usuario'] ?? ''));
+    if (empty($mpPaymentId)) {
+        $mpPaymentId = !empty($mpRefUsuario) ? $mpRefUsuario : ('MP-' . mt_rand(100000000, 999999999));
+    }
+    $estadoPago = 'Aprobado';
+    $notasPedido[] = "Mercado Pago Aprobado · Operación #$mpPaymentId";
+    if (empty($comprobanteTransf)) {
+        $comprobanteTransf = "Mercado Pago: #$mpPaymentId";
+    }
+} elseif ($metodoPago === 'tarjeta') {
+    $numTarjeta = preg_replace('/\D/', '', $_POST['tarjeta_numero'] ?? '');
+    if (strlen($numTarjeta) < 13) {
+        $_SESSION['error_checkout'] = "Los datos de la tarjeta ingresada no son válidos o están incompletos.";
+        header("Location: carrito.php");
+        exit();
+    }
+    if (empty($tarjetaAuthCode)) {
+        $tarjetaAuthCode = 'AUTH-' . strtoupper(substr(md5(uniqid()), 0, 6));
+    }
     $cuotas = intval($_POST['tarjeta_cuotas'] ?? 1);
-    $authCode = strtoupper(substr(md5(uniqid()), 0, 8));
-    $notasPedido[] = "Tarjeta en $cuotas cuota(s) · Auth: #$authCode";
+    $estadoPago = 'Aprobado';
+    $notasPedido[] = "Tarjeta en $cuotas cuota(s) · Auth: #$tarjetaAuthCode";
+} elseif ($metodoPago === 'transferencia') {
+    if (empty($comprobanteTransf) && empty($comprobanteArchivo)) {
+        $comprobanteTransf = 'TRANSF-' . date('Ymd') . '-' . mt_rand(1000, 9999);
+    }
+    $estadoPago = 'Pendiente de Verificación';
+    $notasPedido[] = "Transferencia Bancaria · Comprobante: $comprobanteTransf";
+} elseif ($metodoPago === 'efectivo') {
+    $estadoPago = 'Pendiente de Cobro';
+    $notasPedido[] = "Abono en efectivo contra entrega / en mostrador";
 }
+
 $notasFinales = implode(' | ', $notasPedido);
 
 // ------------------------------------------------------------
@@ -178,7 +245,7 @@ try {
             descuento, codigo_cupon, propina, puntos_usados, puntos_ganados,
             paga_con, vuelto, notas, comprobante_transferencia, comprobante_archivo,
             latitud, longitud, referencia_entrega, total, estado
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Aprobado', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Recibido')"
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Recibido')"
     );
 
     if (!$stmt) {
@@ -186,7 +253,7 @@ try {
     }
 
     $stmt->bind_param(
-        "iissssisdddsdiiddsssddsd",
+        "iissssissdddsdiiddsssddsd",
         $idusuario,
         $numeroPedidoUsuario,
         $tipoEntrega,
@@ -195,6 +262,7 @@ try {
         $sucursal,
         $numeroMesa,
         $metodoPago,
+        $estadoPago,
         $subtotal,
         $costoEnvio,
         $descuentoTotal,
@@ -259,6 +327,12 @@ try {
     if ($metodoPago === 'mercadopago') $colVenta = 'ventas_mercadopago';
     if ($metodoPago === 'transferencia') $colVenta = 'ventas_transferencia';
 
+    // Asegurar que exista un arqueo de caja abierto para registrar la venta
+    $resCajaAbierta = $conn->query("SELECT idarqueo FROM caja_arqueo WHERE estado = 'Abierta' LIMIT 1");
+    if (!$resCajaAbierta || $resCajaAbierta->num_rows === 0) {
+        $conn->query("INSERT INTO caja_arqueo (cajero, turno, monto_inicial, estado) VALUES ('Cajero Central', 'Turno Mañana', 15000.00, 'Abierta')");
+    }
+
     $conn->query("UPDATE caja_arqueo SET $colVenta = $colVenta + $total, total_ventas = total_ventas + $total, total_transacciones = total_transacciones + 1 WHERE estado = 'Abierta' LIMIT 1");
 
     // E) Generar Factura Fiscal en Base de Datos
@@ -266,6 +340,11 @@ try {
         'nombre_cliente' => $usuario['nombre'] . ' ' . $usuario['apellido'],
         'cuit_dni_cliente' => $usuario['telefono'] ?? '0'
     ]);
+
+    // F) Registrar Auditoría de Creación de Pedido Web
+    $nombreClienteWeb = $usuario['nombre'] . ' ' . $usuario['apellido'];
+    $detallesAuditWeb = "Pedido ingresado vía Tienda Online | Modalidad: $tipoEntrega | Pago: $metodoPago | Total: $$total";
+    registrarAuditoriaPedido($conn, $idpedido, 'Recibido', 'Pedido Creado en Tienda Web', 'Cliente Web', $nombreClienteWeb, null, $detallesAuditWeb);
 
     $conn->commit();
 

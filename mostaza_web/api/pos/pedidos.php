@@ -14,12 +14,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once(__DIR__ . '/../../conexion.php');
 
-// Manejar Cancelación de Pedido (POST) - R21
+// Manejar Acciones de Pedido (POST) - Cambiar Estado y Cancelación
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
     $idpedido = intval($input['idpedido'] ?? 0);
-    $motivo = trim($input['motivo'] ?? 'Cancelado por solicitud del cliente en caja');
-    $canceladoPor = trim($input['cancelado_por'] ?? 'Cajero');
+    $accion = trim($input['accion'] ?? 'cancelar_pedido');
 
     if ($idpedido <= 0) {
         echo json_encode(['ok' => false, 'error' => 'ID de pedido inválido.']);
@@ -27,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // Verificar pedido
-    $stmtCheck = $conn->prepare("SELECT idpedido, estado, numero_mesa FROM pedido_web WHERE idpedido = ?");
+    $stmtCheck = $conn->prepare("SELECT idpedido, estado, numero_mesa, tipo_entrega FROM pedido_web WHERE idpedido = ?");
     $stmtCheck->bind_param("i", $idpedido);
     $stmtCheck->execute();
     $p = $stmtCheck->get_result()->fetch_assoc();
@@ -37,20 +36,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
+    // 1. Acción: Cambiar Estado (Cocina / POS / Mesero)
+    if ($accion === 'cambiar_estado') {
+        $nuevoEstado = trim($input['nuevo_estado'] ?? '');
+        $estadosValidos = ['Recibido', 'En Preparacion', 'En Preparación', 'En Cocina', 'Listo para Despacho', 'Listo', 'En Camino', 'Entregado'];
+        if (!in_array($nuevoEstado, $estadosValidos)) {
+            echo json_encode(['ok' => false, 'error' => "Estado no válido: $nuevoEstado"]);
+            exit();
+        }
+
+        // Identificar empleado y rol
+        $idEmpleado = !empty($input['idempleado']) ? intval($input['idempleado']) : ($_SESSION['cocinero_id'] ?? ($_SESSION['cajero_id'] ?? null));
+        $nombreResp = trim($input['empleado_nombre'] ?? ($input['cocinero_nombre'] ?? ($_SESSION['cocinero_nombre'] ?? ($_SESSION['cajero_nombre'] ?? 'Personal de Cocina'))));
+        $rolResp = trim($input['rol'] ?? (in_array($nuevoEstado, ['En Preparacion', 'En Preparación', 'En Cocina', 'Listo para Despacho', 'Listo']) ? 'Cocinero' : 'Cajero'));
+        $detalles = trim($input['detalles'] ?? "Actualización de comanda a '$nuevoEstado'");
+
+        // Registrar auditoría estricta (actualiza pedido_auditoria e hitos en pedido_web)
+        registrarAuditoriaPedido($conn, $idpedido, $nuevoEstado, "Comanda $nuevoEstado", $rolResp, $nombreResp, $idEmpleado, $detalles);
+
+        echo json_encode([
+            'ok' => true,
+            'mensaje' => "Comanda #$idpedido actualizada a '$nuevoEstado' por $nombreResp exitosamente.",
+            'idpedido' => $idpedido,
+            'nuevo_estado' => $nuevoEstado,
+            'responsable' => $nombreResp,
+            'rol' => $rolResp
+        ]);
+        exit();
+    }
+
+    // 2. Acción: Cancelar Pedido
+    $motivo = trim($input['motivo_cancelacion'] ?? ($input['motivo'] ?? 'Cancelado por solicitud del cliente en caja'));
+    $canceladoPor = trim($input['cancelado_por'] ?? ($_SESSION['cajero_nombre'] ?? 'Cajero'));
+    $idEmpleado = !empty($input['idempleado']) ? intval($input['idempleado']) : ($_SESSION['cajero_id'] ?? null);
+    $rolCanc = trim($input['rol'] ?? 'Cajero');
+
     if ($p['estado'] === 'Cancelado') {
         echo json_encode(['ok' => false, 'error' => 'El pedido ya se encuentra cancelado.']);
         exit();
     }
 
-    // Actualizar estado a Cancelado con motivo
-    $stmtCanc = $conn->prepare("UPDATE pedido_web SET estado = 'Cancelado', motivo_cancelacion = ?, cancelado_por = ? WHERE idpedido = ?");
-    $stmtCanc->bind_param("ssi", $motivo, $canceladoPor, $idpedido);
-    $stmtCanc->execute();
+    // Registrar auditoría estricta de cancelación
+    registrarAuditoriaPedido($conn, $idpedido, 'Cancelado', 'Cancelación de Pedido', $rolCanc, $canceladoPor, $idEmpleado, $motivo);
 
     // Si tenía mesa ocupada, liberarla
     if (!empty($p['numero_mesa'])) {
         $mesaNum = intval($p['numero_mesa']);
-        $conn->query("UPDATE mesa SET estado = 'Disponible' WHERE numero = $mesaNum");
+        $conn->query("UPDATE mesa SET estado = 'disponible' WHERE numero_mesa = $mesaNum");
     }
 
     echo json_encode([
@@ -81,7 +113,7 @@ $types = "";
 
 if ($fecha !== 'todas') {
     $fechaFiltro = ($fecha === 'hoy' || empty($fecha)) ? date('Y-m-d') : $fecha;
-    $sql .= " AND DATE(p.fecha) = ?";
+    $sql .= " AND (DATE(p.fecha) = ? OR p.estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'En Preparación', 'Listo para Despacho', 'Listo'))";
     $params[] = $fechaFiltro;
     $types .= "s";
 }

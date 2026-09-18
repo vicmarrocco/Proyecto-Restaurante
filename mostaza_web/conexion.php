@@ -39,7 +39,23 @@ function verificarEstructuraWeb($conn) {
       UNIQUE KEY `email_unico` (`email`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
 
-    // 2. Tabla empleado (con soporte de token Gmail para App Cajero)
+    // 1.1 Tabla rol oficial
+    $conn->query("CREATE TABLE IF NOT EXISTS `rol` (
+      `idrol` INT(11) NOT NULL AUTO_INCREMENT,
+      `rol` VARCHAR(50) NOT NULL,
+      PRIMARY KEY (`idrol`),
+      UNIQUE KEY `rol_unico` (`rol`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
+
+    $conn->query("INSERT IGNORE INTO `rol` (`idrol`, `rol`) VALUES 
+      (1, 'Cliente'),
+      (2, 'Cajero'),
+      (3, 'Cocinero'),
+      (4, 'Mesero'),
+      (5, 'Administrador'),
+      (6, 'Repartidor');");
+
+    // 2. Tabla empleado unificada (Todos los roles, incluido delivery, con autenticación por código Gmail)
     $conn->query("CREATE TABLE IF NOT EXISTS `empleado` (
       `idempleado` INT(11) NOT NULL AUTO_INCREMENT,
       `nombre` VARCHAR(100) NOT NULL,
@@ -53,9 +69,17 @@ function verificarEstructuraWeb($conn) {
       `token_intentos` INT(11) NOT NULL DEFAULT 0,
       `fk_id_telefono` INT(11) DEFAULT NULL,
       `fk_id_email` INT(11) DEFAULT NULL,
-      `fk_id_rol` INT(11) DEFAULT 2,
+      `fk_id_rol` INT(11) NOT NULL DEFAULT 2,
       `fk_id_genero` INT(11) DEFAULT NULL,
       `fk_id_turno` INT(11) DEFAULT 1,
+      `telefono` VARCHAR(50) DEFAULT NULL,
+      `vehiculo` VARCHAR(100) DEFAULT NULL,
+      `patente` VARCHAR(20) DEFAULT NULL,
+      `avatar` VARCHAR(50) DEFAULT '👤',
+      `sucursal_base` VARCHAR(100) DEFAULT 'Mostaza Formosa Centro',
+      `estado_servicio` ENUM('Disponible', 'En Reparto', 'En Descanso', 'Desconectado') DEFAULT 'Disponible',
+      `calificacion` DECIMAL(3,2) DEFAULT 4.95,
+      `viajes_totales` INT(11) DEFAULT 0,
       `activo` TINYINT(1) NOT NULL DEFAULT 1,
       `fecha_creacion` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (`idempleado`),
@@ -70,34 +94,61 @@ function verificarEstructuraWeb($conn) {
             $empCols[] = $r['Field'];
         }
     }
-    if (!in_array('email', $empCols)) {
-        $conn->query("ALTER TABLE `empleado` ADD `email` VARCHAR(150) NOT NULL DEFAULT 'cajero@mostaza.com.ar'");
-    }
-    if (!in_array('usuario', $empCols)) {
-        $conn->query("ALTER TABLE `empleado` ADD `usuario` VARCHAR(50) DEFAULT NULL");
-    }
-    if (!in_array('password', $empCols)) {
-        $conn->query("ALTER TABLE `empleado` ADD `password` VARCHAR(255) DEFAULT NULL");
-    }
-    if (!in_array('activo', $empCols)) {
-        $conn->query("ALTER TABLE `empleado` ADD `activo` TINYINT(1) NOT NULL DEFAULT 1");
-    }
-    if (!in_array('token', $empCols)) {
-        $conn->query("ALTER TABLE `empleado` ADD `token` VARCHAR(10) DEFAULT NULL");
-    }
-    if (!in_array('token_expira', $empCols)) {
-        $conn->query("ALTER TABLE `empleado` ADD `token_expira` DATETIME DEFAULT NULL");
-    }
-    if (!in_array('token_intentos', $empCols)) {
-        $conn->query("ALTER TABLE `empleado` ADD `token_intentos` INT(11) NOT NULL DEFAULT 0");
+    $nuevasColsEmp = [
+        'email' => "VARCHAR(150) NOT NULL DEFAULT 'cajero@mostaza.com.ar'",
+        'usuario' => "VARCHAR(50) DEFAULT NULL",
+        'password' => "VARCHAR(255) DEFAULT NULL",
+        'activo' => "TINYINT(1) NOT NULL DEFAULT 1",
+        'token' => "VARCHAR(10) DEFAULT NULL",
+        'token_expira' => "DATETIME DEFAULT NULL",
+        'token_intentos' => "INT(11) NOT NULL DEFAULT 0",
+        'telefono' => "VARCHAR(50) DEFAULT NULL",
+        'vehiculo' => "VARCHAR(100) DEFAULT NULL",
+        'patente' => "VARCHAR(20) DEFAULT NULL",
+        'avatar' => "VARCHAR(50) DEFAULT '👤'",
+        'sucursal_base' => "VARCHAR(100) DEFAULT 'Mostaza Formosa Centro'",
+        'estado_servicio' => "ENUM('Disponible', 'En Reparto', 'En Descanso', 'Desconectado') DEFAULT 'Disponible'",
+        'calificacion' => "DECIMAL(3,2) DEFAULT 4.95",
+        'viajes_totales' => "INT(11) DEFAULT 0"
+    ];
+    foreach ($nuevasColsEmp as $cName => $cDef) {
+        if (!in_array($cName, $empCols)) {
+            $conn->query("ALTER TABLE `empleado` ADD `$cName` $cDef");
+        }
     }
 
-    // Sembrar cajero de prueba
-    $checkEmp = $conn->query("SELECT COUNT(*) as c FROM `empleado`");
-    if ($checkEmp && ($checkEmp->fetch_assoc()['c'] == 0)) {
-        $conn->query("INSERT INTO `empleado` (`nombre`, `apellido`, `dni`, `email`, `usuario`, `fk_id_rol`, `fk_id_turno`, `activo`) VALUES
-        ('Alberto Emanuel', 'Gómez', '38111222', 'applegomez64@gmail.com', 'cajero_central', 2, 1, 1),
-        ('Cajero', 'Turno Mañana', '30111222', 'cajero1@mostaza.com.ar', 'cajero1', 2, 1, 1);");
+    // Sembrar la nómina oficial diferenciada por rol con sus respectivos correos
+    $nominaOficial = [
+        // Cajeros (Rol 2)
+        ['nombre' => 'Alberto Emanuel', 'apellido' => 'Gómez', 'dni' => '38111222', 'email' => 'applegomez64@gmail.com', 'usuario' => 'cajero_central', 'rol' => 2, 'avatar' => '👨‍💼', 'vehiculo' => null, 'patente' => null, 'telefono' => '3704-112233'],
+        ['nombre' => 'Romina', 'apellido' => 'Castro', 'dni' => '29222111', 'email' => 'cajero1@mostaza.com.ar', 'usuario' => 'cajero1', 'rol' => 2, 'avatar' => '👩‍💼', 'vehiculo' => null, 'patente' => null, 'telefono' => '3704-223344'],
+        // Cocineros (Rol 3)
+        ['nombre' => 'Martín', 'apellido' => 'Paredes', 'dni' => '33444555', 'email' => 'cocina1@mostaza.com.ar', 'usuario' => 'cocina1', 'rol' => 3, 'avatar' => '👨‍🍳', 'vehiculo' => null, 'patente' => null, 'telefono' => '3704-334455'],
+        ['nombre' => 'Lucas', 'apellido' => 'Silveira', 'dni' => '34555666', 'email' => 'cocina2@mostaza.com.ar', 'usuario' => 'cocina2', 'rol' => 3, 'avatar' => '👨‍🍳', 'vehiculo' => null, 'patente' => null, 'telefono' => '3704-445566'],
+        // Meseros (Rol 4)
+        ['nombre' => 'Franco', 'apellido' => 'Morales', 'dni' => '35666777', 'email' => 'mesero1@mostaza.com.ar', 'usuario' => 'mesero1', 'rol' => 4, 'avatar' => '🤵', 'vehiculo' => null, 'patente' => null, 'telefono' => '3704-556677'],
+        ['nombre' => 'Ezequiel', 'apellido' => 'Molina', 'dni' => '36777888', 'email' => 'mesero2@mostaza.com.ar', 'usuario' => 'mesero2', 'rol' => 4, 'avatar' => '🤵', 'vehiculo' => null, 'patente' => null, 'telefono' => '3704-667788'],
+        // Repartidores / Delivery (Rol 6)
+        ['nombre' => 'Ramiro', 'apellido' => 'González', 'dni' => '36852147', 'email' => 'delivery1@mostaza.com.ar', 'usuario' => 'delivery1', 'rol' => 6, 'avatar' => '🛵', 'vehiculo' => 'Moto Honda Wave 110cc', 'patente' => 'A123BCD', 'telefono' => '3704-551122'],
+        ['nombre' => 'Lucas', 'apellido' => 'Benítez', 'dni' => '38411902', 'email' => 'delivery2@mostaza.com.ar', 'usuario' => 'delivery2', 'rol' => 6, 'avatar' => '🏍️', 'vehiculo' => 'Moto Yamaha YBR 125cc', 'patente' => 'A045EFG', 'telefono' => '3704-662233'],
+        ['nombre' => 'Mateo', 'apellido' => 'Silveira', 'dni' => '40231876', 'email' => 'delivery3@mostaza.com.ar', 'usuario' => 'delivery3', 'rol' => 6, 'avatar' => '⚡', 'vehiculo' => 'Moto Gilera Smash 110', 'patente' => 'A654NOP', 'telefono' => '3704-995566']
+    ];
+
+    foreach ($nominaOficial as $empData) {
+        $chk = $conn->prepare("SELECT idempleado FROM `empleado` WHERE email = ? LIMIT 1");
+        $chk->bind_param("s", $empData['email']);
+        $chk->execute();
+        $resChk = $chk->get_result();
+        if ($resChk->num_rows === 0) {
+            $insEmp = $conn->prepare("INSERT INTO `empleado` (nombre, apellido, dni, email, usuario, fk_id_rol, fk_id_turno, avatar, vehiculo, patente, telefono, activo) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 1)");
+            $insEmp->bind_param("sssssissss", $empData['nombre'], $empData['apellido'], $empData['dni'], $empData['email'], $empData['usuario'], $empData['rol'], $empData['avatar'], $empData['vehiculo'], $empData['patente'], $empData['telefono']);
+            $insEmp->execute();
+        } else {
+            $rowEmp = $resChk->fetch_assoc();
+            $updEmp = $conn->prepare("UPDATE `empleado` SET fk_id_rol = ?, avatar = ?, vehiculo = ?, patente = ?, telefono = ?, activo = 1 WHERE idempleado = ?");
+            $updEmp->bind_param("issssi", $empData['rol'], $empData['avatar'], $empData['vehiculo'], $empData['patente'], $empData['telefono'], $rowEmp['idempleado']);
+            $updEmp->execute();
+        }
     }
 
     // 3. Tabla cupon
@@ -181,7 +232,23 @@ function verificarEstructuraWeb($conn) {
         'longitud' => "DECIMAL(11,8) DEFAULT NULL",
         'referencia_entrega' => "VARCHAR(255) DEFAULT NULL",
         'repartidor_asignado' => "VARCHAR(100) DEFAULT NULL",
-        'numero_pedido_usuario' => "INT(11) DEFAULT NULL"
+        'numero_pedido_usuario' => "INT(11) DEFAULT NULL",
+        'idempleado_cajero' => "INT(11) DEFAULT NULL",
+        'cajero_nombre' => "VARCHAR(100) DEFAULT NULL",
+        'idempleado_mesero' => "INT(11) DEFAULT NULL",
+        'mesero_nombre' => "VARCHAR(100) DEFAULT NULL",
+        'idempleado_cocinero' => "INT(11) DEFAULT NULL",
+        'cocinero_nombre' => "VARCHAR(100) DEFAULT NULL",
+        'idempleado_repartidor' => "INT(11) DEFAULT NULL",
+        'hora_recibido' => "DATETIME DEFAULT NULL",
+        'hora_cocina_inicio' => "DATETIME DEFAULT NULL",
+        'hora_cocina_listo' => "DATETIME DEFAULT NULL",
+        'hora_despacho_camino' => "DATETIME DEFAULT NULL",
+        'hora_entregado' => "DATETIME DEFAULT NULL",
+        'duracion_cocina_minutos' => "INT(11) DEFAULT NULL",
+        'duracion_entrega_minutos' => "INT(11) DEFAULT NULL",
+        'duracion_total_minutos' => "INT(11) DEFAULT NULL",
+        'numero_caja' => "INT(11) NOT NULL DEFAULT 1"
     ];
     foreach ($nuevasCols as $colName => $colDef) {
         if (!in_array($colName, $pedCols)) {
@@ -198,34 +265,38 @@ function verificarEstructuraWeb($conn) {
       `idproducto` INT(11) DEFAULT NULL,
       `descripcion` VARCHAR(255) NOT NULL,
       `modificadores` VARCHAR(255) DEFAULT NULL,
-      `precio_unitario` DECIMAL(10,2) NOT NULL,
+      `precio_unitario` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
       `cantidad` INT(11) NOT NULL DEFAULT 1,
-      `subtotal` DECIMAL(10,2) NOT NULL,
+      `subtotal` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
       PRIMARY KEY (`iddetalle`),
-      KEY `idx_pedido` (`idpedido`)
+      KEY `idx_detalle_pedido` (`idpedido`),
+      KEY `idx_detalle_producto` (`idproducto`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
 
-    // 6. Tabla caja_arqueo (Control y Registro de Fondos de Inicio y Cierre de Turno)
+    // 6. Tabla caja_arqueo (Control de Caja POS y Turnos por Terminal)
     $conn->query("CREATE TABLE IF NOT EXISTS `caja_arqueo` (
       `idarqueo` INT(11) NOT NULL AUTO_INCREMENT,
+      `numero_caja` INT(11) NOT NULL DEFAULT 1,
+      `terminal_nombre` VARCHAR(50) DEFAULT 'Caja 1 - Principal',
       `idempleado` INT(11) DEFAULT NULL,
-      `cajero` VARCHAR(100) NOT NULL DEFAULT 'Cajero de Turno',
-      `turno` VARCHAR(30) NOT NULL DEFAULT 'Turno Mañana',
-      `monto_inicial` DECIMAL(10,2) NOT NULL DEFAULT 10000.00,
+      `cajero` VARCHAR(100) NOT NULL,
+      `turno` VARCHAR(50) NOT NULL,
+      `fecha_apertura` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      `fecha_cierre` DATETIME DEFAULT NULL,
+      `monto_inicial` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
       `ventas_efectivo` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
       `ventas_tarjeta` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
       `ventas_mercadopago` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
       `ventas_transferencia` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+      `monto_retiros` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
       `total_ventas` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-      `monto_fisico_cierre` DECIMAL(10,2) DEFAULT NULL,
+      `total_transacciones` INT(11) NOT NULL DEFAULT 0,
       `monto_final_sistema` DECIMAL(10,2) DEFAULT NULL,
+      `monto_fisico_cierre` DECIMAL(10,2) DEFAULT NULL,
       `diferencia` DECIMAL(10,2) DEFAULT NULL,
       `observaciones_apertura` VARCHAR(255) DEFAULT NULL,
       `observaciones_cierre` VARCHAR(255) DEFAULT NULL,
-      `total_transacciones` INT(11) NOT NULL DEFAULT 0,
       `estado` VARCHAR(20) NOT NULL DEFAULT 'Abierta',
-      `fecha_apertura` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      `fecha_cierre` DATETIME DEFAULT NULL,
       PRIMARY KEY (`idarqueo`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
 
@@ -236,6 +307,18 @@ function verificarEstructuraWeb($conn) {
         while ($r = $colsCaja->fetch_assoc()) {
             $cajaCols[] = $r['Field'];
         }
+    }
+    if (!in_array('numero_caja', $cajaCols)) {
+        $conn->query("ALTER TABLE `caja_arqueo` ADD `numero_caja` INT(11) NOT NULL DEFAULT 1");
+    }
+    if (!in_array('terminal_nombre', $cajaCols)) {
+        $conn->query("ALTER TABLE `caja_arqueo` ADD `terminal_nombre` VARCHAR(50) DEFAULT 'Caja 1 - Principal'");
+    }
+    if (!in_array('idempleado', $cajaCols)) {
+        $conn->query("ALTER TABLE `caja_arqueo` ADD `idempleado` INT(11) DEFAULT NULL AFTER `terminal_nombre`");
+    }
+    if (!in_array('monto_retiros', $cajaCols)) {
+        $conn->query("ALTER TABLE `caja_arqueo` ADD `monto_retiros` DECIMAL(10,2) NOT NULL DEFAULT 0.00");
     }
     if (!in_array('monto_final_sistema', $cajaCols)) {
         $conn->query("ALTER TABLE `caja_arqueo` ADD `monto_final_sistema` DECIMAL(10,2) DEFAULT NULL");
@@ -249,6 +332,20 @@ function verificarEstructuraWeb($conn) {
     if (!in_array('observaciones_cierre', $cajaCols)) {
         $conn->query("ALTER TABLE `caja_arqueo` ADD `observaciones_cierre` VARCHAR(255) DEFAULT NULL");
     }
+
+    // 6.1 Tabla caja_retiro (Sangrías / Retiros de Seguridad a Tesorería)
+    $conn->query("CREATE TABLE IF NOT EXISTS `caja_retiro` (
+      `idretiro` INT(11) NOT NULL AUTO_INCREMENT,
+      `idarqueo` INT(11) NOT NULL,
+      `numero_caja` INT(11) NOT NULL DEFAULT 1,
+      `idempleado` INT(11) DEFAULT NULL,
+      `cajero` VARCHAR(100) NOT NULL,
+      `monto` DECIMAL(10,2) NOT NULL,
+      `motivo` VARCHAR(255) NOT NULL DEFAULT 'Retiro de seguridad / Sangría a tesorería',
+      `fecha_hora` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (`idretiro`),
+      KEY `idx_retiro_arqueo` (`idarqueo`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
 
     // 7. Tabla factura (Facturación Fiscal de Cada Venta)
     $conn->query("CREATE TABLE IF NOT EXISTS `factura` (
@@ -373,6 +470,70 @@ function verificarEstructuraWeb($conn) {
       KEY `fk_registro_empleado` (`fk_id_empleado`),
       KEY `fk_registro_turno` (`fk_id_turno`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
+
+    // 13. Tabla inmutable pedido_auditoria (Trazabilidad estricta y detallada de cada empleado por pedido)
+    $conn->query("CREATE TABLE IF NOT EXISTS `pedido_auditoria` (
+      `idauditoria` INT(11) NOT NULL AUTO_INCREMENT,
+      `idpedido` INT(11) NOT NULL,
+      `estado_anterior` VARCHAR(50) DEFAULT NULL,
+      `estado_nuevo` VARCHAR(50) NOT NULL,
+      `accion` VARCHAR(100) NOT NULL,
+      `rol_responsable` VARCHAR(50) NOT NULL,
+      `idempleado` INT(11) DEFAULT NULL,
+      `nombre_responsable` VARCHAR(100) NOT NULL,
+      `detalles` TEXT DEFAULT NULL,
+      `ip_origen` VARCHAR(45) DEFAULT NULL,
+      `fecha_hora` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (`idauditoria`),
+      KEY `idx_auditoria_pedido` (`idpedido`),
+      KEY `idx_auditoria_fecha` (`fecha_hora`),
+      KEY `idx_auditoria_rol` (`rol_responsable`),
+      KEY `idx_auditoria_empleado` (`idempleado`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+    // Unificación de flota delivery: los repartidores son empleados con fk_id_rol = 6.
+    // Vista de compatibilidad para evitar roturas en consultas legacy que consulten `repartidor`:
+    $chkBaseRep = $conn->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE' AND (Tables_in_rest = 'repartidor' OR Tables_in_rest LIKE '%repartidor')");
+    if ($chkBaseRep && $chkBaseRep->num_rows > 0) {
+        $conn->query("DROP TABLE IF EXISTS `repartidor`");
+    }
+    $conn->query("CREATE OR REPLACE VIEW `repartidor` AS
+      SELECT 
+        `idempleado` AS `idrepartidor`,
+        `idempleado`,
+        CONCAT(`nombre`, ' ', `apellido`) AS `nombre`,
+        `dni`,
+        `telefono`,
+        `vehiculo`,
+        `patente`,
+        `token` AS `pin`,
+        `avatar`,
+        `sucursal_base`,
+        `activo`,
+        `estado_servicio`,
+        `calificacion`,
+        `viajes_totales`,
+        `email`
+      FROM `empleado`
+      WHERE `fk_id_rol` = 6;");
+
+    // 14. Columnas en sucursal (GPS y radio de delivery)
+    $colsSuc = $conn->query("SHOW COLUMNS FROM `sucursal`");
+    if ($colsSuc) {
+        $sucCols = [];
+        while ($r = $colsSuc->fetch_assoc()) {
+            $sucCols[] = $r['Field'];
+        }
+        if (!in_array('latitud', $sucCols)) {
+            $conn->query("ALTER TABLE `sucursal` ADD `latitud` DECIMAL(10,8) DEFAULT NULL");
+        }
+        if (!in_array('longitud', $sucCols)) {
+            $conn->query("ALTER TABLE `sucursal` ADD `longitud` DECIMAL(11,8) DEFAULT NULL");
+        }
+        if (!in_array('horario_atencion', $sucCols)) {
+            $conn->query("ALTER TABLE `sucursal` ADD `horario_atencion` VARCHAR(100) DEFAULT 'Lunes a Domingo de 08:00 a 02:00'");
+        }
+    }
 }
 
 verificarEstructuraWeb($conn);
@@ -526,4 +687,79 @@ function generarFacturaFiscal($conn, $idPedido, $tipoComprobante = 'Factura B', 
         'items' => $itemsFactura
     ];
 }
+
+// ============================================================
+// FUNCIÓN CENTRAL DE AUDITORÍA ESTRICTA DE PEDIDOS Y EMPLEADOS
+// Registra cada transición de estado inmutablemente y actualiza hitos
+// ============================================================
+function registrarAuditoriaPedido($conn, $idpedido, $estadoNuevo, $accion, $rol, $nombreResponsable, $idempleado = null, $detalles = null) {
+    $idpedido = intval($idpedido);
+    if ($idpedido <= 0) return false;
+
+    // Obtener estado y fechas actuales del pedido
+    $stmtP = $conn->prepare("SELECT estado, fecha, hora_recibido, hora_cocina_inicio, hora_cocina_listo, hora_despacho_camino, hora_entregado FROM pedido_web WHERE idpedido = ?");
+    $stmtP->bind_param("i", $idpedido);
+    $stmtP->execute();
+    $p = $stmtP->get_result()->fetch_assoc();
+    $estadoAnterior = $p['estado'] ?? 'Recibido';
+
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+
+    // 1. Insertar evento inmutable en pedido_auditoria
+    $stmtAud = $conn->prepare("
+        INSERT INTO pedido_auditoria (idpedido, estado_anterior, estado_nuevo, accion, rol_responsable, idempleado, nombre_responsable, detalles, ip_origen)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmtAud->bind_param("issssisss", $idpedido, $estadoAnterior, $estadoNuevo, $accion, $rol, $idempleado, $nombreResponsable, $detalles, $ip);
+    $stmtAud->execute();
+    $idAuditoria = $stmtAud->insert_id;
+
+    // 2. Actualizar estado e hitos temporales en pedido_web
+    $updates = ["`estado` = '" . $conn->real_escape_string($estadoNuevo) . "'"];
+
+    if ($estadoNuevo === 'Recibido') {
+        $updates[] = "`hora_recibido` = IFNULL(`hora_recibido`, NOW())";
+        if ($rol === 'Cajero' || $rol === 'Cajero POS') {
+            $updates[] = "`cajero_nombre` = '" . $conn->real_escape_string($nombreResponsable) . "'";
+            if ($idempleado) $updates[] = "`idempleado_cajero` = " . intval($idempleado);
+        } elseif ($rol === 'Mesero' || $rol === 'Mesero Salón') {
+            $updates[] = "`mesero_nombre` = '" . $conn->real_escape_string($nombreResponsable) . "'";
+            if ($idempleado) $updates[] = "`idempleado_mesero` = " . intval($idempleado);
+        }
+    } elseif (in_array($estadoNuevo, ['En Cocina', 'En Preparacion', 'En Preparación'])) {
+        $updates[] = "`hora_cocina_inicio` = IFNULL(`hora_cocina_inicio`, NOW())";
+        $updates[] = "`cocinero_nombre` = '" . $conn->real_escape_string($nombreResponsable) . "'";
+        if ($idempleado) $updates[] = "`idempleado_cocinero` = " . intval($idempleado);
+    } elseif (in_array($estadoNuevo, ['Listo', 'Listo para Despacho'])) {
+        $updates[] = "`hora_cocina_listo` = NOW()";
+        $updates[] = "`hora_completado_cocina` = NOW()";
+        if (!empty($nombreResponsable)) {
+            $updates[] = "`cocinero_nombre` = '" . $conn->real_escape_string($nombreResponsable) . "'";
+            if ($idempleado) $updates[] = "`idempleado_cocinero` = " . intval($idempleado);
+        }
+        $updates[] = "`duracion_cocina_minutos` = GREATEST(1, TIMESTAMPDIFF(MINUTE, IFNULL(hora_cocina_inicio, IFNULL(hora_recibido, fecha)), NOW()))";
+    } elseif ($estadoNuevo === 'En Camino') {
+        $updates[] = "`hora_despacho_camino` = NOW()";
+        $updates[] = "`repartidor_asignado` = '" . $conn->real_escape_string($nombreResponsable) . "'";
+        if ($idempleado) $updates[] = "`idempleado_repartidor` = " . intval($idempleado);
+    } elseif ($estadoNuevo === 'Entregado') {
+        $updates[] = "`hora_entregado` = NOW()";
+        if (!empty($nombreResponsable) && ($rol === 'Repartidor' || $rol === 'Repartidor Delivery')) {
+            $updates[] = "`repartidor_asignado` = '" . $conn->real_escape_string($nombreResponsable) . "'";
+            if ($idempleado) $updates[] = "`idempleado_repartidor` = " . intval($idempleado);
+        }
+        $updates[] = "`duracion_entrega_minutos` = GREATEST(1, TIMESTAMPDIFF(MINUTE, IFNULL(hora_despacho_camino, IFNULL(hora_cocina_listo, fecha)), NOW()))";
+        $updates[] = "`duracion_total_minutos` = GREATEST(1, TIMESTAMPDIFF(MINUTE, IFNULL(hora_recibido, fecha), NOW()))";
+    } elseif ($estadoNuevo === 'Cancelado') {
+        $updates[] = "`cancelado_por` = '" . $conn->real_escape_string("$rol ($nombreResponsable)") . "'";
+        if (!empty($detalles)) {
+            $updates[] = "`motivo_cancelacion` = '" . $conn->real_escape_string($detalles) . "'";
+        }
+    }
+
+    $conn->query("UPDATE pedido_web SET " . implode(', ', $updates) . " WHERE idpedido = $idpedido");
+
+    return $idAuditoria;
+}
+
 

@@ -1,22 +1,43 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Text, Platform } from 'react-native';
+import { Text, Platform, View, ActivityIndicator } from 'react-native';
 import { MostazaColors } from '@/constants/Colors';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import LoginScreen from '@/components/LoginScreen';
 
-export default function AppLayout() {
+function CocinaGate() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0F172A' }}>
+        <ActivityIndicator size="large" color="#FBB728" />
+      </View>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginScreen />;
+  }
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: MostazaColors.amarillo,
-        tabBarInactiveTintColor: '#94A3B8',
+        tabBarActiveTintColor: MostazaColors.rojo,
+        tabBarInactiveTintColor: '#64748B',
         tabBarStyle: {
-          backgroundColor: '#0F172A',
-          borderTopColor: '#1E293B',
+          backgroundColor: '#FFFFFF',
+          borderTopColor: '#E2E8F0',
           borderTopWidth: 1,
           height: Platform.OS === 'web' ? 65 : 60,
           paddingBottom: Platform.OS === 'web' ? 8 : 6,
           paddingTop: 6,
+          elevation: 8,
+          shadowColor: '#000',
+          shadowOpacity: 0.05,
+          shadowOffset: { width: 0, height: -2 },
+          shadowRadius: 6,
         },
         tabBarLabelStyle: {
           fontSize: 11,
@@ -51,6 +72,21 @@ export default function AppLayout() {
           tabBarIcon: () => <Text style={{ fontSize: 20 }}>⚙️</Text>,
         }}
       />
+      <Tabs.Screen
+        name="login"
+        options={{
+          href: null,
+          tabBarStyle: { display: 'none' },
+        }}
+      />
     </Tabs>
+  );
+}
+
+export default function AppLayout() {
+  return (
+    <AuthProvider>
+      <CocinaGate />
+    </AuthProvider>
   );
 }

@@ -1,73 +1,192 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
-
-const RECETAS_STATIC = [
-  {
-    nombre: 'Mega Cuarto Doble',
-    categoria: 'Hamburguesas',
-    tiempo: '4 min',
-    ingredientes: '2 Medallones 120g, 2 Fetas Cheddar, Mostaza especial, Ketchup, Cebolla picada, Pepinillos, Pan Brioche con sésamo.',
-    pasos: '1. Tostar pan brioche a 210°C por 20 seg.\n2. Planchar carnes a 177°C por 110 seg.\n3. Montar queso cheddar sobre carne caliente.\n4. Aderezar tapa con mostaza, kétchup, cebolla y pepinillo.',
-  },
-  {
-    nombre: 'Mega Pollo Crispy Deluxe',
-    categoria: 'Pollo',
-    tiempo: '5 min',
-    ingredientes: 'Filet de pollo empanado crispy 140g, Mayonesa dulce, Lechuga repollada, Tomate redondo, Pan de Papa.',
-    pasos: '1. Freír filet de pollo en freidora a 180°C por 4 min 30 seg.\n2. Tostar pan de papa.\n3. Aplicar 15g de mayonesa en ambas caras.\n4. Colocar tomate, lechuga y pollo caliente.',
-  },
-  {
-    nombre: 'Papas Cheddar & Bacon Mega',
-    categoria: 'Acompañamientos',
-    tiempo: '3 min',
-    ingredientes: 'Papas bastón premium 250g, Salsa cheddar tibia 60g, Panceta crocante picada 20g.',
-    pasos: '1. Freír papas a 175°C por 3 min.\n2. Escurrir y salar inmediatamente.\n3. Servir en canasta y bañar con cheddar tibio.\n4. Espolvorear panceta crocante.',
-  },
-];
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  SafeAreaView,
+  TextInput,
+  ActivityIndicator,
+  RefreshControl,
+  TouchableOpacity,
+} from 'react-native';
+import { ApiService } from '@/services/api';
+import { Receta } from '@/types/cocina';
+import { MostazaColors } from '@/constants/Colors';
 
 export default function RecetasScreen() {
+  const [recetas, setRecetas] = useState<Receta[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [categoriaActiva, setCategoriaActiva] = useState<string>('Todas');
+
+  const cargarRecetas = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    const res = await ApiService.getRecetas();
+    if (res.ok) {
+      setRecetas(res.recetas);
+    }
+    setLoading(false);
+    if (isRefresh) setRefreshing(false);
+  }, []);
+
+  useEffect(() => {
+    cargarRecetas();
+  }, [cargarRecetas]);
+
+  const categorias = ['Todas', ...Array.from(new Set(recetas.map((r) => r.categoria)))];
+
+  const recetasFiltradas = recetas.filter((r) => {
+    const matchCat = categoriaActiva === 'Todas' || r.categoria === categoriaActiva;
+    const matchTxt =
+      !busqueda ||
+      r.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+      r.ingredientes.toLowerCase().includes(busqueda.toLowerCase());
+    return matchCat && matchTxt;
+  });
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>📖 LIBRO DE RECETAS TÉCNICAS</Text>
-        <Text style={styles.headerSub}>Gramajes, Tiempos y Procedimientos de Cocina (R35)</Text>
+        <View>
+          <Text style={styles.headerTitle}>📖 LIBRO DE RECETAS TÉCNICAS</Text>
+          <Text style={styles.headerSub}>Fichas Técnicas Oficiales, Gramajes y Tiempos (R35)</Text>
+        </View>
+        <View style={styles.badgeCount}>
+          <Text style={styles.badgeCountTxt}>{recetas.length} RECETAS</Text>
+        </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {RECETAS_STATIC.map((r, idx) => (
-          <View key={idx} style={styles.card}>
-            <View style={styles.cardTop}>
-              <Text style={styles.recName}>{r.nombre}</Text>
-              <Text style={styles.recTime}>⏱️ {r.tiempo}</Text>
-            </View>
-            <Text style={styles.secLbl}>Ingredientes y Gramajes:</Text>
-            <Text style={styles.secTxt}>{r.ingredientes}</Text>
+      {/* Buscador Rápido */}
+      <View style={styles.searchBar}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="🔍 Buscar receta por nombre o ingrediente..."
+          placeholderTextColor="#64748B"
+          value={busqueda}
+          onChangeText={setBusqueda}
+        />
+      </View>
 
-            <Text style={[styles.secLbl, { marginTop: 8 }]}>Pasos de Elaboración:</Text>
-            <Text style={styles.secTxt}>{r.pasos}</Text>
+      {/* Categorías Pills */}
+      <View style={styles.catPillsContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsScroll}>
+          {categorias.map((cat) => (
+            <TouchableOpacity
+              key={cat}
+              style={[styles.pill, categoriaActiva === cat && styles.pillActive]}
+              onPress={() => setCategoriaActiva(cat)}>
+              <Text style={[styles.pillTxt, categoriaActiva === cat && styles.pillTxtActive]}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => cargarRecetas(true)} />}>
+        {loading ? (
+          <ActivityIndicator size="large" color={MostazaColors.amarillo} style={{ marginTop: 40 }} />
+        ) : recetasFiltradas.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={{ fontSize: 32, marginBottom: 8 }}>🔍</Text>
+            <Text style={styles.emptyTxt}>No se encontraron recetas con el filtro actual.</Text>
           </View>
-        ))}
+        ) : (
+          recetasFiltradas.map((r) => (
+            <View key={r.idreceta} style={styles.card}>
+              <View style={styles.cardTop}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.recName}>{r.nombre}</Text>
+                  <Text style={styles.recCat}>{r.categoria.toUpperCase()} · Dificultad: {r.dificultad}</Text>
+                </View>
+                <View style={styles.badgeTime}>
+                  <Text style={styles.recTime}>⏱️ {r.tiempo}</Text>
+                </View>
+              </View>
+
+              <View style={styles.tempBox}>
+                <Text style={styles.tempTxt}>🔥 Temperatura / Equipos: <Text style={{ color: '#FBB728', fontWeight: '800' }}>{r.temperatura}</Text></Text>
+              </View>
+
+              <Text style={styles.secLbl}>Gramajes e Ingredientes:</Text>
+              <Text style={styles.secTxt}>{r.ingredientes}</Text>
+
+              <Text style={[styles.secLbl, { marginTop: 10 }]}>Pasos de Elaboración:</Text>
+              <Text style={styles.secTxt}>{r.pasos}</Text>
+            </View>
+          ))
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#0B0F19' },
+  safeArea: { flex: 1, backgroundColor: '#F1F5F9' },
   header: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 20,
     paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
+    borderBottomColor: '#E2E8F0',
   },
-  headerTitle: { fontSize: 16, fontWeight: '900', color: '#FBB728' },
-  headerSub: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
+  headerTitle: { fontSize: 16, fontWeight: '900', color: MostazaColors.rojo },
+  headerSub: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  badgeCount: { backgroundColor: '#FEF3C7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#FDE68A' },
+  badgeCountTxt: { color: '#92400E', fontSize: 10, fontWeight: '800' },
+  searchBar: { paddingHorizontal: 16, paddingTop: 12 },
+  searchInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#0F172A',
+    fontSize: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  catPillsContainer: { paddingVertical: 8 },
+  pillsScroll: { paddingHorizontal: 16, gap: 8 },
+  pill: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  pillActive: { backgroundColor: MostazaColors.rojo, borderColor: MostazaColors.rojo },
+  pillTxt: { color: '#64748B', fontSize: 11, fontWeight: '700' },
+  pillTxtActive: { color: '#FFFFFF', fontWeight: '900' },
   scroll: { padding: 16 },
-  card: { backgroundColor: '#1E293B', borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: '#334155' },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  recName: { fontSize: 15, fontWeight: '900', color: '#FFFFFF' },
-  recTime: { fontSize: 11, color: '#FBB728', fontWeight: '800' },
-  secLbl: { fontSize: 11, fontWeight: '800', color: '#FBB728' },
-  secTxt: { fontSize: 11, color: '#CBD5E1', marginTop: 2, lineHeight: 16 },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000000',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+  recName: { fontSize: 15, fontWeight: '900', color: '#0F172A' },
+  recCat: { fontSize: 10, color: '#64748B', fontWeight: '700', marginTop: 2 },
+  badgeTime: { backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A' },
+  recTime: { fontSize: 11, color: '#B45309', fontWeight: '900' },
+  tempBox: { backgroundColor: '#F8FAFC', padding: 10, borderRadius: 8, marginVertical: 8, borderWidth: 1, borderColor: '#F1F5F9' },
+  tempTxt: { fontSize: 11, color: '#334155' },
+  secLbl: { fontSize: 11, fontWeight: '800', color: MostazaColors.rojo, marginTop: 4 },
+  secTxt: { fontSize: 11, color: '#334155', marginTop: 2, lineHeight: 17 },
+  emptyBox: { alignItems: 'center', paddingVertical: 60 },
+  emptyTxt: { color: '#64748B', fontSize: 13, fontWeight: '700' },
 });

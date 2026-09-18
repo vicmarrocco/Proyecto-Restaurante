@@ -55,22 +55,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mostaza - Registro</title>
 
-<link rel="stylesheet" href="auth.css">
-<link rel="stylesheet" href="tienda.css">
-
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;700;800&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="style.css?v=<?= filemtime('style.css') ?>">
+<link rel="stylesheet" href="auth.css?v=<?= filemtime('auth.css') ?>">
+<link rel="stylesheet" href="tienda.css?v=<?= filemtime('tienda.css') ?>">
 </head>
 <body>
 
-<header>
+<header style="display:flex;justify-content:space-between;align-items:center;padding:20px 8%;border-bottom:1px solid #E8DFD1;background:rgba(255,255,255,0.7);backdrop-filter:blur(10px);">
     <div class="logo">
         <a href="index.php" style="display:flex;align-items:center;gap:12px;text-decoration:none;">
-            <img src="img/image-removebg-preview.png" alt="">
-            <span>MOSTAZA</span>
+            <img src="img/image-removebg-preview.png" alt="Mostaza" style="width:48px;">
+            <span style="font-family:'Montserrat',sans-serif;font-weight:900;color:var(--rojo);font-size:1.7rem;letter-spacing:-0.5px;">MOSTAZA</span>
         </a>
     </div>
+    <a href="index.php" style="color:#64748B;font-weight:700;font-size:0.88rem;display:flex;align-items:center;gap:8px;text-decoration:none;transition:color 0.2s;">
+        <i class="fa-solid fa-arrow-left"></i> Volver a la Tienda
+    </a>
 </header>
 
 <section class="auth-container">

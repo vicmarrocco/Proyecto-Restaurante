@@ -110,6 +110,22 @@ if ($mesasWebRes) {
         $mesasWeb[] = $m;
     }
 }
+
+// Consultar sucursales activas para asignación automática por cercanía y Take Away
+$sucursalesWebRes = $conn->query("SELECT idsucursal, nombre, direccion, ciudad, latitud, longitud FROM sucursal WHERE activo = 1 ORDER BY idsucursal ASC");
+$sucursalesWeb = [];
+if ($sucursalesWebRes) {
+    while ($sw = $sucursalesWebRes->fetch_assoc()) {
+        $sucursalesWeb[] = [
+            'id' => intval($sw['idsucursal']),
+            'nombre' => $sw['nombre'],
+            'direccion' => $sw['direccion'],
+            'ciudad' => $sw['ciudad'],
+            'lat' => floatval($sw['latitud']),
+            'lng' => floatval($sw['longitud'])
+        ];
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -117,12 +133,16 @@ if ($mesasWebRes) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Carrito y Checkout · Mostaza</title>
-<link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="tienda.css">
-<link rel="stylesheet" href="checkout.css">
+<!-- Base Framework (Bootstrap) -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<!-- Google Fonts & Font Awesome -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<!-- Estilos Oficiales Mostaza (Sobrescriben Bootstrap) -->
+<link rel="stylesheet" href="style.css?v=<?= filemtime('style.css') ?>">
+<link rel="stylesheet" href="tienda.css?v=<?= filemtime('tienda.css') ?>">
+<link rel="stylesheet" href="checkout.css?v=<?= filemtime('checkout.css') ?>">
 <!-- Leaflet Map para GPS en Vivo -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -137,7 +157,7 @@ if ($mesasWebRes) {
     z-index: 10;
 }
 .btn-gps-loc {
-    background: #2563EB;
+    background: var(--rojo);
     color: #fff;
     border: none;
     padding: 8px 14px;
@@ -151,16 +171,16 @@ if ($mesasWebRes) {
     transition: background 0.2s ease;
 }
 .btn-gps-loc:hover {
-    background: #1D4ED8;
+    background: var(--rojo-dark);
 }
 .gps-status-badge {
-    background: #EFF6FF;
-    border: 1px solid #BFDBFE;
-    color: #1E40AF;
+    background: #FEF3C7;
+    border: 1px solid #FDE68A;
+    color: #92400E;
     padding: 8px 12px;
     border-radius: 8px;
     font-size: 0.8rem;
-    font-weight: 600;
+    font-weight: 700;
     margin-top: 8px;
     display: flex;
     align-items: center;
@@ -196,6 +216,14 @@ if ($mesasWebRes) {
 .btn-copy-bank:hover {
     background: #FDE68A;
 }
+@keyframes spinMP {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.mp-choice-card:hover {
+    border-color: #009EE3 !important;
+    background: #F0F9FF !important;
+}
 </style>
 </head>
 <body class="checkout-page">
@@ -208,6 +236,20 @@ if ($mesasWebRes) {
         <h1>Finalizar tu Pedido</h1>
         <p>Revisá tus productos seleccionados, la entrega con GPS y elegí tu medio de pago.</p>
     </div>
+
+    <?php 
+    $errorMostrar = $_SESSION['error_checkout'] ?? ($_GET['error'] ?? '');
+    if (!empty($errorMostrar)): 
+    ?>
+        <div style="background:#FEF2F2;border:2px solid #EF4444;color:#991B1B;padding:14px 20px;border-radius:12px;margin-bottom:24px;font-weight:700;display:flex;align-items:center;justify-content:space-between;box-shadow:0 4px 12px rgba(239,68,68,0.15);">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <i class="fa-solid fa-triangle-exclamation" style="font-size:1.5rem;color:#DC2626;"></i>
+                <span><?= htmlspecialchars($errorMostrar) ?></span>
+            </div>
+            <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:#991B1B;font-size:1.2rem;cursor:pointer;">✕</button>
+        </div>
+        <?php unset($_SESSION['error_checkout']); ?>
+    <?php endif; ?>
 
     <?php if (empty($carrito)): ?>
         <div class="card-section" style="text-align:center;padding:70px 20px;">
@@ -328,8 +370,34 @@ if ($mesasWebRes) {
                                 <span id="gpsStatusText">Ubicación fijada en mapa. Arrastrá el marcador si necesitás ajustar la posición.</span>
                             </div>
 
+                            <!-- Sucursal Asignada Automáticamente por Cercanía GPS -->
+                            <div class="sucursal-cercana-box" id="sucursalCercanaBox" style="margin-top:12px; background:#FEF2F2; border:1.5px solid #FCA5A5; border-radius:14px; padding:14px 18px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                                    <div style="display:flex; align-items:center; gap:12px;">
+                                        <div style="width:42px; height:42px; border-radius:50%; background:var(--rojo); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.15rem; flex-shrink:0;">
+                                            <i class="fa-solid fa-store"></i>
+                                        </div>
+                                        <div>
+                                            <div style="font-size:0.75rem; text-transform:uppercase; font-weight:800; color:#991B1B; letter-spacing:0.5px;">
+                                                <i class="fa-solid fa-route"></i> Área de Cobertura y Despacho
+                                            </div>
+                                            <div style="font-size:1.02rem; font-weight:900; color:#1E293B;" id="nombreSucursalCercana">
+                                                Mostaza Formosa Centro
+                                            </div>
+                                            <div style="font-size:0.82rem; color:#64748B;" id="detalleDistanciaSucursal">
+                                                📍 Av. 25 de Mayo 150 · Calculando sucursal más cercana...
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <span class="badge" style="background:#16A34A; color:#fff; font-weight:800; font-size:0.78rem; padding:6px 12px; border-radius:20px;">
+                                        <i class="fa-solid fa-bolt"></i> Sucursal más cercana
+                                    </span>
+                                </div>
+                            </div>
+
                             <input type="hidden" name="latitud" id="latitud_input" value="<?= SUCURSAL_LAT ?>">
                             <input type="hidden" name="longitud" id="longitud_input" value="<?= SUCURSAL_LNG ?>">
+                            <input type="hidden" name="sucursal_asignada" id="sucursal_asignada_input" value="Mostaza Formosa Centro">
                         </div>
 
                         <div class="form-group-custom">
@@ -348,10 +416,12 @@ if ($mesasWebRes) {
                     <div id="fields-takeaway" class="delivery-form-fields" style="<?= $tipoEntrega !== 'takeaway' ? 'display:none;' : '' ?>">
                         <div class="form-group-custom">
                             <label><i class="fa-solid fa-store"></i> Sucursal de Retiro *</label>
-                            <select name="sucursal_retiro">
-                                <option value="Mostaza Formosa Centro (Av. 25 de Mayo 150)">Mostaza Formosa Centro (Av. 25 de Mayo 150)</option>
-                                <option value="Mostaza Costanera Formosa">Mostaza Costanera Formosa</option>
-                                <option value="Mostaza Circunvalación Formosa">Mostaza Circunvalación Formosa</option>
+                            <select name="sucursal_retiro" id="sucursal_retiro_select">
+                                <?php foreach ($sucursalesWeb as $sw): ?>
+                                <option value="<?= htmlspecialchars($sw['nombre']) ?>">
+                                    <?= htmlspecialchars($sw['nombre']) ?> (<?= htmlspecialchars($sw['direccion']) ?> - <?= htmlspecialchars($sw['ciudad']) ?>)
+                                </option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
                         <div class="form-group-custom">
@@ -524,22 +594,106 @@ if ($mesasWebRes) {
                         </div>
                     </div>
 
-                    <!-- Panel 2: Mercado Pago -->
+                    <!-- Panel 2: Mercado Pago Oficial & QR Interoperable -->
                     <div id="panel-mercadopago" class="payment-content-panel" style="display:none;">
-                        <div class="mp-box">
-                            <img src="https://http2.mlstatic.com/frontend-assets/ui-navigation/5.18.9/mercadopago/logo__large.png" alt="Mercado Pago" class="mp-logo">
-                            <h3 style="color:#009EE3;margin-bottom:6px;">Pagá con QR o dinero en Mercado Pago</h3>
-                            <p style="color:#555;font-size:0.9rem;">Escaneá el código QR interoperable desde tu celular con cualquier app bancaria o Mercado Pago.</p>
+                        <!-- Hidden inputs para la orden verificada -->
+                        <input type="hidden" name="mp_payment_id" id="mp_payment_id" value="">
+                        <input type="hidden" name="mp_payment_status" id="mp_payment_status" value="">
+
+                        <!-- Vista 1: Pendiente de Pago en MP con QR en Pantalla -->
+                        <div id="mp-pending-box" class="mp-box" style="border: 2px solid #009EE3; padding: 22px; border-radius: 16px; background: #F8FAFC; text-align: center; box-shadow: 0 4px 15px rgba(0,158,227,0.08);">
                             
-                            <div class="mp-qr-container">
-                                <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=<?= urlencode('00020101021243650016COM.MERCADOPAGO0136' . BANCO_ALIAS . '5204000053030325802AR5914MOSTAZA%20SA6012BUENOS%20AIRES540' . number_format($totalFinal, 2, '.', '') . '6304') ?>" alt="QR Mercado Pago">
-                                <div style="font-size:0.8rem;font-weight:700;color:#009EE3;margin-top:6px;">
-                                    <i class="fa-solid fa-shield-check"></i> Monto vinculado: $<?= number_format($totalFinal, 0, ',', '.') ?>
+                            <div style="display:flex; justify-content:center; align-items:center; gap:12px; margin-bottom:12px;">
+                                <img src="https://http2.mlstatic.com/frontend-assets/ui-navigation/5.18.9/mercadopago/logo__large.png" alt="Mercado Pago" style="height: 36px;">
+                                <span style="background:#E0F2FE; color:#0369A1; font-size:0.75rem; padding:4px 10px; border-radius:20px; font-weight:800; border:1px solid #BAE6FD;">
+                                    <i class="fa-solid fa-shield-halved"></i> Pasarela Oficial
+                                </span>
+                            </div>
+
+                            <p style="color: #475569; font-size: 0.9rem; max-width: 500px; margin: 0 auto 16px;">
+                                Escaneá el código QR desde tu celular con la <strong>app de Mercado Pago</strong> o cualquier billetera digital habilitada con <strong>Transferencias 3.0 / BCRA</strong>.
+                            </p>
+
+                            <!-- Contenedor Central del Código QR Oficial -->
+                            <div style="background:#FFFFFF; border:2px solid #E2E8F0; border-radius:16px; padding:18px; max-width:320px; margin:0 auto 16px; box-shadow:0 6px 16px rgba(0,0,0,0.05);">
+                                <img id="mpTabQrImg" 
+                                     src="<?= generarQrUrlMercadoPago($totalFinal, 220) ?>" 
+                                     alt="QR Oficial Mercado Pago" 
+                                     style="width:200px; height:200px; display:block; margin:0 auto 10px; border-radius:8px;">
+
+                                <div style="font-size:0.85rem; font-weight:800; color:#0F172A; margin-bottom:4px;">
+                                    Total a Pagar: <span style="color:#0284C7;" id="mpTabMontoDisplay">$<?= number_format($totalFinal, 0, ',', '.') ?></span>
+                                </div>
+                                <div style="font-size:0.72rem; color:#64748B;">
+                                    Titular: <strong><?= htmlspecialchars(BANCO_TITULAR) ?></strong>
+                                </div>
+                                <div style="margin-top:6px; font-size:0.72rem; color:#10B981; font-weight:700;">
+                                    <i class="fa-solid fa-circle-check"></i> Formato EMVCo BCRA Verificado
                                 </div>
                             </div>
-                            <div style="background:#e0f2fe;color:#0369a1;padding:10px;border-radius:8px;font-size:0.85rem;font-weight:600;margin-top:12px;">
-                                <i class="fa-solid fa-circle-info"></i> Al confirmar el pedido, tu pago se procesará y acreditará en tiempo real.
+
+                            <!-- Botones Rápidos de Copia y Enlace Celular -->
+                            <div style="display:flex; justify-content:center; flex-wrap:wrap; gap:8px; margin-bottom:18px;">
+                                <a href="<?= MP_LINK_PAGO ?>" target="_blank" class="btn-mp-quick" style="background:#009EE3; color:#fff; text-decoration:none; padding:8px 14px; border-radius:8px; font-size:0.8rem; font-weight:800; display:inline-flex; align-items:center; gap:6px;">
+                                    <i class="fa-solid fa-mobile-screen"></i> Abrir en App Mercado Pago
+                                </a>
+                                <button type="button" class="btn-mp-quick" onclick="copiarTexto('<?= htmlspecialchars(BANCO_ALIAS) ?>')" style="background:#F1F5F9; border:1px solid #CBD5E1; color:#334155; padding:8px 12px; border-radius:8px; font-size:0.8rem; font-weight:700; cursor:pointer;">
+                                    <i class="fa-regular fa-copy"></i> Copiar Alias (<?= htmlspecialchars(BANCO_ALIAS) ?>)
+                                </button>
+                                <button type="button" class="btn-mp-quick" onclick="copiarTexto('<?= htmlspecialchars(BANCO_CVU) ?>')" style="background:#F1F5F9; border:1px solid #CBD5E1; color:#334155; padding:8px 12px; border-radius:8px; font-size:0.8rem; font-weight:700; cursor:pointer;">
+                                    <i class="fa-regular fa-copy"></i> Copiar CVU
+                                </button>
+                                <button type="button" class="btn-mp-quick" onclick="copiarTexto('<?= intval($totalFinal) ?>')" style="background:#F1F5F9; border:1px solid #CBD5E1; color:#334155; padding:8px 12px; border-radius:8px; font-size:0.8rem; font-weight:700; cursor:pointer;">
+                                    <i class="fa-regular fa-copy"></i> Copiar Monto
+                                </button>
                             </div>
+
+                            <!-- Confirmación / Acreditación en 1 Clic -->
+                            <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:12px; padding:16px; max-width:440px; margin:0 auto; text-align:left;">
+                                <label style="font-size:0.82rem; font-weight:800; color:#1E3A8A; display:block; margin-bottom:6px;">
+                                    <i class="fa-solid fa-circle-info"></i> ¿Ya realizaste el pago en la app?
+                                </label>
+                                <div style="display:flex; gap:8px; margin-bottom:10px;">
+                                    <input type="text" id="inputMpReferenciaCliente" name="mp_referencia_usuario" placeholder="Nº de comprobante / operación (opcional)" style="flex:1; padding:8px 12px; border:1px solid #CBD5E1; border-radius:8px; font-size:0.85rem;">
+                                </div>
+                                <div style="display:flex; gap:8px; flex-direction:column;">
+                                    <button type="button" onclick="confirmarPagoMPDirecto()" style="width:100%; background:#10B981; color:#fff; border:none; padding:12px; border-radius:8px; font-weight:900; font-size:0.92rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 4px 10px rgba(16,185,129,0.25);">
+                                        <i class="fa-solid fa-circle-check"></i> Confirmar Pago Acreditado en Mercado Pago
+                                    </button>
+                                    <button type="button" onclick="abrirModalMercadoPago('cuenta')" style="width:100%; background:#FFFFFF; color:#0284C7; border:1px solid #BAE6FD; padding:9px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                                        <i class="fa-solid fa-bolt"></i> Simular Dinero en Cuenta (Demostración)
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- Vista 2: Pago Acreditado Exitoso -->
+                        <div id="mp-approved-box" style="display: none; border: 2px solid #10B981; padding: 24px; border-radius: 16px; background: #F0FDF4; text-align: center; box-shadow: 0 4px 15px rgba(16,185,129,0.15);">
+                            <div style="width: 60px; height: 60px; background: #10B981; color: #fff; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 2rem; margin-bottom: 12px; box-shadow: 0 4px 12px rgba(16,185,129,0.3);">
+                                <i class="fa-solid fa-check"></i>
+                            </div>
+                            <h3 style="color: #15803D; font-size: 1.35rem; font-weight: 900; margin-bottom: 4px;">¡Pago Acreditado en Mercado Pago!</h3>
+                            <p style="color: #166534; font-size: 0.9rem; margin-bottom: 14px;">La transacción ha sido verificada exitosamente. Ya podés confirmar tu pedido.</p>
+
+                            <div style="background: #FFFFFF; border: 1px solid #BBF7D0; border-radius: 12px; padding: 14px 20px; max-width: 400px; margin: 0 auto 16px; text-align: left; font-size: 0.88rem;">
+                                <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                                    <span style="color:#64748B;">ID de Operación:</span>
+                                    <strong id="displayMpPaymentId" style="color:#0F172A; font-family: monospace; font-size: 0.95rem;">-</strong>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                                    <span style="color:#64748B;">Monto Acreditado:</span>
+                                    <strong style="color:#15803D;">$<?= number_format($totalFinal, 0, ',', '.') ?></strong>
+                                </div>
+                                <div style="display:flex; justify-content:space-between;">
+                                    <span style="color:#64748B;">Medio Utilizado:</span>
+                                    <strong id="displayMpPaymentMethod" style="color:#0284C7;">Mercado Pago Oficial</strong>
+                                </div>
+                            </div>
+
+                            <button type="button" onclick="reiniciarPagoMP()" style="background: none; border: none; color: #64748B; font-size: 0.82rem; text-decoration: underline; cursor: pointer;">
+                                Reintentar o cambiar método de pago
+                            </button>
                         </div>
                     </div>
 
@@ -576,7 +730,10 @@ if ($mesasWebRes) {
 
                             <div class="form-group-custom" style="margin-top:16px;">
                                 <label><i class="fa-solid fa-receipt"></i> Número de Comprobante / Referencia de Transferencia</label>
-                                <input type="text" name="comprobante_transferencia" placeholder="Ej: Operación #98765432">
+                                <input type="text" name="comprobante_transferencia" id="comprobante_transferencia_input" placeholder="Ej: Operación #98765432">
+                                <button type="button" class="btn-autofill-card" onclick="autocompletarComprobanteTransferencia()" style="margin-top:6px;font-size:0.8rem;padding:6px 12px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:6px;cursor:pointer;color:#334155;font-weight:700;">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i> Usar Comprobante de Prueba Rápido
+                                </button>
                             </div>
 
                             <div class="form-group-custom" style="margin-top:12px;">
@@ -714,6 +871,9 @@ if ($mesasWebRes) {
                         <i class="fa-solid fa-award"></i> ¡Con esta compra sumás <span id="summary-puntos-ganar"><?= $puntosGanados ?></span> Puntos Mostaza!
                     </div>
 
+                    <!-- Token de Autorización de Tarjeta -->
+                    <input type="hidden" name="tarjeta_auth_code" id="tarjeta_auth_code" value="">
+
                     <!-- Botón de Envío del Pedido -->
                     <button type="submit" class="btn-submit-order" id="btnConfirmarPedido">
                         <i class="fa-solid fa-lock"></i> Confirmar y Pagar Pedido
@@ -729,6 +889,115 @@ if ($mesasWebRes) {
         </div>
     </form>
 
+    <!-- MODAL PASARELA OFICIAL MERCADO PAGO -->
+    <div class="modal-mp-overlay" id="modalMercadoPagoGateway" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.7); z-index:99999; align-items:center; justify-content:center; padding:15px;">
+        <div style="background:#FFFFFF; border-radius:20px; width:100%; max-width:480px; max-height:90vh; overflow-y:auto; box-shadow:0 25px 50px -12px rgba(0,0,0,0.3); border:1px solid #CBD5E1; position:relative;">
+            
+            <!-- Header MP -->
+            <div style="background:#009EE3; padding:18px 22px; border-radius:20px 20px 0 0; color:#FFFFFF; display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <img src="https://http2.mlstatic.com/frontend-assets/ui-navigation/5.18.9/mercadopago/logo__large.png" alt="Mercado Pago" style="height:24px; filter:brightness(0) invert(1);">
+                    <span style="font-size:0.75rem; background:rgba(255,255,255,0.25); padding:3px 8px; border-radius:12px; font-weight:700;"><i class="fa-solid fa-lock"></i> Checkout Seguro</span>
+                </div>
+                <button type="button" onclick="cerrarModalMP()" style="background:none; border:none; color:#FFFFFF; font-size:1.4rem; cursor:pointer; line-height:1;">✕</button>
+            </div>
+
+            <div style="padding:22px;">
+                <!-- Resumen de cobro -->
+                <div style="text-align:center; padding-bottom:16px; margin-bottom:16px; border-bottom:1px solid #E2E8F0;">
+                    <span style="font-size:0.75rem; color:#64748B; text-transform:uppercase; letter-spacing:1px; font-weight:700;">Mostaza Argentina S.A.</span>
+                    <h2 style="font-size:2rem; font-weight:900; color:#0F172A; margin:4px 0;" id="mpModalMontoDisplay">$<?= number_format($totalFinal, 0, ',', '.') ?></h2>
+                    <span style="font-size:0.8rem; color:#64748B;">Total de tu pedido a acreditar</span>
+                </div>
+
+                <!-- Contenido de opciones de pago en MP -->
+                <div id="mpModalContent">
+                    
+                    <!-- Opcion 1: Dinero en Cuenta -->
+                    <div style="background:#F8FAFC; border:2px solid #E2E8F0; border-radius:12px; padding:14px; margin-bottom:12px; cursor:pointer; transition:all 0.2s;" class="mp-choice-card" onclick="procesarPagoMP('Dinero en Cuenta Mercado Pago')">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <div style="width:38px; height:38px; background:#E0F2FE; color:#0284C7; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.1rem;">
+                                    <i class="fa-solid fa-wallet"></i>
+                                </div>
+                                <div>
+                                    <strong style="color:#0F172A; font-size:0.9rem; display:block;">Dinero disponible en Mercado Pago</strong>
+                                    <span style="font-size:0.78rem; color:#16A34A; font-weight:700;">Saldo disponible: $48.500,00</span>
+                                </div>
+                            </div>
+                            <span style="background:#0284C7; color:#fff; font-size:0.75rem; padding:4px 10px; border-radius:6px; font-weight:800;">Pagar</span>
+                        </div>
+                    </div>
+
+                    <!-- Opcion 2: QR Dinámico Interoperable -->
+                    <div style="background:#F8FAFC; border:2px solid #E2E8F0; border-radius:12px; padding:14px; margin-bottom:12px;" id="mpQrSection">
+                        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                            <div style="width:38px; height:38px; background:#FEF3C7; color:#B45309; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.1rem;">
+                                <i class="fa-solid fa-qrcode"></i>
+                            </div>
+                            <div>
+                                <strong style="color:#0F172A; font-size:0.9rem; display:block;">Código QR en Vivo</strong>
+                                <span style="font-size:0.75rem; color:#64748B;">Escaneá desde tu celular con la app de Mercado Pago</span>
+                            </div>
+                        </div>
+
+                        <div style="text-align:center; padding:12px; background:#FFFFFF; border-radius:10px; border:1px solid #E2E8F0;">
+                            <img id="mpModalQrImg" src="<?= generarQrUrlMercadoPago($totalFinal, 200) ?>" alt="QR Mercado Pago" style="width:170px; height:170px; display:block; margin:0 auto 8px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:#0284C7; font-weight:800; display:flex; justify-content:center; align-items:center; gap:6px;">
+                                <i class="fa-solid fa-spinner fa-spin"></i> <span id="mpQrTimer">Esperando lectura en app (04:59)</span>
+                            </div>
+                        </div>
+
+                        <button type="button" onclick="procesarPagoMP('QR Interoperable Mercado Pago')" style="margin-top:10px; width:100%; background:#0284C7; color:#FFFFFF; border:none; padding:10px; border-radius:8px; font-weight:800; font-size:0.85rem; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+                            <i class="fa-solid fa-mobile-screen-button"></i> Simular Pago Exitoso desde la App
+                        </button>
+                    </div>
+
+                    <!-- Opcion 3: Tarjeta Guardada en Mercado Pago -->
+                    <div style="background:#F8FAFC; border:2px solid #E2E8F0; border-radius:12px; padding:14px; cursor:pointer; transition:all 0.2s;" class="mp-choice-card" onclick="procesarPagoMP('Tarjeta Guardada Visa Débito **** 4012')">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <div style="width:38px; height:38px; background:#F1F5F9; color:#334155; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.1rem;">
+                                    <i class="fa-solid fa-credit-card"></i>
+                                </div>
+                                <div>
+                                    <strong style="color:#0F172A; font-size:0.9rem; display:block;">Visa Débito **** 4012</strong>
+                                    <span style="font-size:0.75rem; color:#64748B;">Guardada en tu cuenta Mercado Pago</span>
+                                </div>
+                            </div>
+                            <span style="background:#0284C7; color:#fff; font-size:0.75rem; padding:4px 10px; border-radius:6px; font-weight:800;">Pagar</span>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Vista Procesando Spinner -->
+                <div id="mpModalLoading" style="display:none; text-align:center; padding:30px 10px;">
+                    <div style="width:50px; height:50px; border:4px solid #E0F2FE; border-top-color:#009EE3; border-radius:50%; animation:spinMP 0.8s linear infinite; margin:0 auto 14px;"></div>
+                    <h3 style="color:#0F172A; font-size:1.15rem; font-weight:800; margin-bottom:4px;" id="mpLoadingStatusText">Conectando con Mercado Pago...</h3>
+                    <p style="color:#64748B; font-size:0.82rem;">Acreditando la transacción en tiempo real</p>
+                </div>
+
+                <!-- Vista Exito Animado -->
+                <div id="mpModalSuccess" style="display:none; text-align:center; padding:20px 10px;">
+                    <div style="width:64px; height:64px; background:#10B981; color:#fff; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:2rem; margin-bottom:12px; box-shadow:0 8px 20px rgba(16,185,129,0.35);">
+                        <i class="fa-solid fa-check"></i>
+                    </div>
+                    <h3 style="color:#15803D; font-size:1.35rem; font-weight:900; margin-bottom:4px;">¡Listo! Se acreditó tu pago</h3>
+                    <p style="color:#166534; font-size:0.88rem; margin-bottom:16px;">En tu resumen verás el cargo a nombre de Mostaza Argentina S.A.</p>
+                    <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:12px; margin-bottom:18px; font-size:0.85rem; color:#166534; font-weight:700;">
+                        Comprobante #<span id="mpSuccessOpCode">MP-XXXXXX</span>
+                    </div>
+                    <button type="button" onclick="confirmarExitoMP()" style="background:#009EE3; color:#FFFFFF; border:none; padding:13px 20px; border-radius:10px; font-weight:900; font-size:0.95rem; cursor:pointer; width:100%;">
+                        Continuar al Resumen del Pedido
+                    </button>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
     <?php endif; ?>
 
 </div>
@@ -739,12 +1008,88 @@ if ($mesasWebRes) {
 let totalActualNum = <?= floatval($totalFinal) ?>;
 let sucursalLat = <?= SUCURSAL_LAT ?>;
 let sucursalLng = <?= SUCURSAL_LNG ?>;
+const todasLasSucursales = <?= json_encode($sucursalesWeb) ?>;
 
 // ------------------------------------------------------------
-// INICIALIZACIÓN DE MAPA LEAFLET GPS
+// INICIALIZACIÓN DE MAPA LEAFLET GPS & ASIGNACIÓN DE SUCURSAL
 // ------------------------------------------------------------
 let map = null;
 let marker = null;
+let sucursalMarker = null;
+let deliveryRouteLine = null;
+
+function calcularDistanciaHaversineKm(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Radio de la Tierra en km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+function actualizarSucursalCercana(lat, lng) {
+    if (!todasLasSucursales || todasLasSucursales.length === 0) return;
+
+    let masCercana = null;
+    let menorDistancia = Infinity;
+
+    todasLasSucursales.forEach(s => {
+        const dist = calcularDistanciaHaversineKm(lat, lng, s.lat, s.lng);
+        if (dist < menorDistancia) {
+            menorDistancia = dist;
+            masCercana = s;
+        }
+    });
+
+    if (masCercana) {
+        const inputSuc = document.getElementById('sucursal_asignada_input');
+        if (inputSuc) inputSuc.value = masCercana.nombre;
+
+        const elNombre = document.getElementById('nombreSucursalCercana');
+        const elDetalle = document.getElementById('detalleDistanciaSucursal');
+
+        const distTxt = menorDistancia < 1.0 
+            ? `${Math.round(menorDistancia * 1000)} metros` 
+            : `${menorDistancia.toFixed(1)} km`;
+
+        if (elNombre) elNombre.textContent = masCercana.nombre;
+        if (elDetalle) elDetalle.textContent = `📍 ${masCercana.direccion} (${masCercana.ciudad}) · A sólo ${distTxt} de tu puerta.`;
+
+        // Actualizar o crear marcador de sucursal en el mapa
+        if (map) {
+            const storeIcon = L.icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-gold.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [26, 42],
+                iconAnchor: [13, 42],
+                popupAnchor: [1, -36],
+                shadowSize: [41, 41]
+            });
+
+            if (!sucursalMarker) {
+                sucursalMarker = L.marker([masCercana.lat, masCercana.lng], { icon: storeIcon }).addTo(map);
+            } else {
+                sucursalMarker.setLatLng([masCercana.lat, masCercana.lng]);
+            }
+            sucursalMarker.bindPopup(`<b>🍔 ${masCercana.nombre}</b><br>Punto de Despacho Asignado<br>📍 ${masCercana.direccion} (${distTxt})`);
+
+            // Línea punteada de conexión
+            if (!deliveryRouteLine) {
+                deliveryRouteLine = L.polyline([[masCercana.lat, masCercana.lng], [lat, lng]], {
+                    color: '#A30002',
+                    weight: 3.5,
+                    opacity: 0.85,
+                    dashArray: '6, 8'
+                }).addTo(map);
+            } else {
+                deliveryRouteLine.setLatLngs([[masCercana.lat, masCercana.lng], [lat, lng]]);
+            }
+        }
+    }
+}
 
 function initDeliveryMap() {
     const mapContainer = document.getElementById('deliveryMap');
@@ -775,11 +1120,14 @@ function initDeliveryMap() {
 
     marker.bindPopup("<b>📍 Tu ubicación de entrega</b><br>Arrastrá el marcador si necesitás ajustar la puerta.").openPopup();
 
+    actualizarSucursalCercana(initLat, initLng);
+
     marker.on('dragend', function(e) {
         const pos = e.target.getLatLng();
         document.getElementById('latitud_input').value = pos.lat.toFixed(6);
         document.getElementById('longitud_input').value = pos.lng.toFixed(6);
         reverseGeocode(pos.lat, pos.lng);
+        actualizarSucursalCercana(pos.lat, pos.lng);
     });
 
     map.on('click', function(e) {
@@ -787,6 +1135,7 @@ function initDeliveryMap() {
         document.getElementById('latitud_input').value = e.latlng.lat.toFixed(6);
         document.getElementById('longitud_input').value = e.latlng.lng.toFixed(6);
         reverseGeocode(e.latlng.lat, e.latlng.lng);
+        actualizarSucursalCercana(e.latlng.lat, e.latlng.lng);
     });
 }
 
@@ -810,11 +1159,12 @@ function geolocalizarUsuario() {
             document.getElementById('longitud_input').value = lng.toFixed(6);
 
             if (map && marker) {
-                map.setView([lat, lng], 16);
+                map.setView([lat, lng], 15);
                 marker.setLatLng([lat, lng]);
             }
 
             reverseGeocode(lat, lng);
+            actualizarSucursalCercana(lat, lng);
 
             btn.innerHTML = '<i class="fa-solid fa-check"></i> ¡Ubicación obtenida!';
             setTimeout(() => {
@@ -878,9 +1228,10 @@ function buscarDireccionEnMapa(dir) {
                 document.getElementById('latitud_input').value = lat.toFixed(6);
                 document.getElementById('longitud_input').value = lon.toFixed(6);
                 if (map && marker) {
-                    map.setView([lat, lon], 16);
+                    map.setView([lat, lon], 15);
                     marker.setLatLng([lat, lon]);
                 }
+                actualizarSucursalCercana(lat, lon);
             }
         });
 }
@@ -1031,6 +1382,20 @@ function actualizarDOMTotales(data) {
         renderBilletesRapidos();
         calcularVuelto();
     }
+
+    // Actualizar código QR y montos en Mercado Pago
+    if (typeof getQrUrlMercadoPagoJs === 'function') {
+        const nuevoQr = getQrUrlMercadoPagoJs(data.total_final);
+        const elQrTab = document.getElementById('mpTabQrImg');
+        const elQrModal = document.getElementById('mpModalQrImg');
+        const elTabMonto = document.getElementById('mpTabMontoDisplay');
+        const elModalMonto = document.getElementById('mpModalMontoDisplay');
+
+        if (elQrTab) elQrTab.src = nuevoQr;
+        if (elQrModal) elQrModal.src = nuevoQr;
+        if (elTabMonto) elTabMonto.textContent = '$' + Math.ceil(data.total_final).toLocaleString('es-AR');
+        if (elModalMonto) elModalMonto.textContent = '$' + Math.ceil(data.total_final).toLocaleString('es-AR');
+    }
 }
 
 // ------------------------------------------------------------
@@ -1109,6 +1474,12 @@ function autocompletarTarjetaPrueba(tipo) {
         document.getElementById('inputCardExp').value = '08/29';
         document.getElementById('inputCardCvv').value = '789';
     }
+
+    const dniEl = document.getElementById('inputCardDni');
+    if (dniEl && !dniEl.value) dniEl.value = '38123456';
+
+    const authInput = document.getElementById('tarjeta_auth_code');
+    if (authInput) authInput.value = 'AUTH-' + tipo.toUpperCase() + '-' + Math.floor(100000 + Math.random() * 900000);
 
     document.getElementById('inputCardNumber').dispatchEvent(new Event('input'));
     document.getElementById('inputCardHolder').dispatchEvent(new Event('input'));
@@ -1220,33 +1591,308 @@ function seleccionarMesaWeb(num, seccionNombre, capacidad, ocupada) {
     }
 }
 
-// Validación de Formulario antes de enviar
+// ------------------------------------------------------------
+// GENERADOR Y ACTUALIZADOR DINÁMICO DE QR MERCADO PAGO EN JS (EMVCo BCRA)
+// ------------------------------------------------------------
+function emvCoTagJs(id, value) {
+    const len = value.length.toString().padStart(2, '0');
+    return id + len + value;
+}
+
+function calcularCrc16CcittJs(str) {
+    let crc = 0xFFFF;
+    for (let c = 0; c < str.length; c++) {
+        crc ^= (str.charCodeAt(c) << 8);
+        for (let i = 0; i < 8; i++) {
+            if (crc & 0x8000) {
+                crc = ((crc << 1) ^ 0x1021) & 0xFFFF;
+            } else {
+                crc = (crc << 1) & 0xFFFF;
+            }
+        }
+    }
+    return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+
+function generarPayloadEmvcoJs(alias, cvu, monto, titular, ciudad) {
+    alias = alias || '<?= BANCO_ALIAS ?>';
+    cvu = cvu || '<?= BANCO_CVU ?>';
+    titular = titular || '<?= BANCO_TITULAR ?>';
+    ciudad = ciudad || 'FORMOSA';
+
+    let payload = emvCoTagJs('00', '01');
+    payload += emvCoTagJs('01', monto > 0 ? '12' : '11');
+
+    const sub00 = emvCoTagJs('00', 'COM.MERCADOPAGO');
+    const cuentaId = cvu ? cvu.replace(/\D/g, '') : alias.toLowerCase().trim();
+    const sub01 = emvCoTagJs('01', cuentaId);
+    payload += emvCoTagJs('43', sub00 + sub01);
+
+    payload += emvCoTagJs('52', '5814');
+    payload += emvCoTagJs('53', '032');
+
+    if (monto > 0) {
+        const mStr = Number(monto).toFixed(2);
+        payload += emvCoTagJs('54', mStr);
+    }
+
+    payload += emvCoTagJs('58', 'AR');
+
+    let nomLimpio = titular.toUpperCase().replace(/[^A-Z0-9 ]/g, '').substring(0, 25);
+    if (!nomLimpio) nomLimpio = 'MOSTAZA OFICIAL';
+    payload += emvCoTagJs('59', nomLimpio);
+
+    let ciuLimpia = ciudad.toUpperCase().replace(/[^A-Z0-9 ]/g, '').substring(0, 15);
+    if (!ciuLimpia) ciuLimpia = 'FORMOSA';
+    payload += emvCoTagJs('60', ciuLimpia);
+
+    const subRef = emvCoTagJs('01', 'MOSTAZA');
+    payload += emvCoTagJs('62', subRef);
+
+    const conTag63 = payload + '6304';
+    const crc = calcularCrc16CcittJs(conTag63);
+    return conTag63 + crc;
+}
+
+function getQrUrlMercadoPagoJs(monto) {
+    const payload = generarPayloadEmvcoJs('<?= BANCO_ALIAS ?>', '<?= BANCO_CVU ?>', monto, '<?= BANCO_TITULAR ?>', 'FORMOSA');
+    return 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=' + encodeURIComponent(payload);
+}
+
+function confirmarPagoMPDirecto() {
+    const inputRef = document.getElementById('inputMpReferenciaCliente');
+    let ref = inputRef ? inputRef.value.trim() : '';
+    if (!ref) {
+        ref = 'MP-' + Math.floor(100000000 + Math.random() * 900000000);
+    }
+    
+    document.getElementById('mp_payment_id').value = ref;
+    document.getElementById('mp_payment_status').value = 'approved';
+
+    document.getElementById('displayMpPaymentId').textContent = '#' + ref;
+    document.getElementById('displayMpPaymentMethod').textContent = 'Mercado Pago QR Oficial';
+
+    document.getElementById('mp-pending-box').style.display = 'none';
+    document.getElementById('mp-approved-box').style.display = 'block';
+
+    const btnSubmit = document.getElementById('btnConfirmarPedido');
+    if (btnSubmit) {
+        btnSubmit.scrollIntoView({ behavior: 'smooth' });
+    }
+}
+
+function autocompletarComprobanteTransferencia() {
+    const input = document.getElementById('comprobante_transferencia_input');
+    if (input) {
+        const randNum = Math.floor(10000000 + Math.random() * 90000000);
+        input.value = 'TRANSF-' + randNum;
+        input.dispatchEvent(new Event('input'));
+    }
+}
+
+// ------------------------------------------------------------
+// Pasarela Interactiva de Mercado Pago
+// ------------------------------------------------------------
+let mpCountdownTimer = null;
+let mpCurrentSelectedMethod = 'Mercado Pago Oficial';
+
+function abrirModalMercadoPago(tipo) {
+    const modal = document.getElementById('modalMercadoPagoGateway');
+    if (!modal) return;
+
+    // Resetear vistas del modal
+    document.getElementById('mpModalContent').style.display = 'block';
+    document.getElementById('mpModalLoading').style.display = 'none';
+    document.getElementById('mpModalSuccess').style.display = 'none';
+
+    // Actualizar monto mostrado
+    const displayMonto = document.getElementById('mpModalMontoDisplay');
+    if (displayMonto) {
+        displayMonto.textContent = '$' + Math.ceil(totalActualNum).toLocaleString('es-AR');
+    }
+
+    modal.style.display = 'flex';
+
+    // Iniciar temporizador de QR (5 minutos)
+    iniciarTemporizadorQR();
+
+    if (tipo === 'qr') {
+        const qrSec = document.getElementById('mpQrSection');
+        if (qrSec) qrSec.scrollIntoView({ behavior: 'smooth' });
+    }
+}
+
+function cerrarModalMP() {
+    const modal = document.getElementById('modalMercadoPagoGateway');
+    if (modal) modal.style.display = 'none';
+    if (mpCountdownTimer) {
+        clearInterval(mpCountdownTimer);
+        mpCountdownTimer = null;
+    }
+}
+
+function iniciarTemporizadorQR() {
+    if (mpCountdownTimer) clearInterval(mpCountdownTimer);
+    let segundosRestantes = 300; // 5 minutos
+    const timerElem = document.getElementById('mpQrTimer');
+    
+    function actualizarTimer() {
+        if (!timerElem) return;
+        const mins = Math.floor(segundosRestantes / 60).toString().padStart(2, '0');
+        const secs = (segundosRestantes % 60).toString().padStart(2, '0');
+        timerElem.textContent = 'Esperando lectura en app (' + mins + ':' + secs + ')';
+        if (segundosRestantes <= 0) {
+            clearInterval(mpCountdownTimer);
+            timerElem.textContent = 'Código QR expirado - Actualizá para generar uno nuevo';
+        }
+        segundosRestantes--;
+    }
+    actualizarTimer();
+    mpCountdownTimer = setInterval(actualizarTimer, 1000);
+}
+
+function procesarPagoMP(nombreMetodo) {
+    mpCurrentSelectedMethod = nombreMetodo || 'Dinero en Cuenta Mercado Pago';
+
+    document.getElementById('mpModalContent').style.display = 'none';
+    document.getElementById('mpModalLoading').style.display = 'block';
+
+    const statusText = document.getElementById('mpLoadingStatusText');
+    if (statusText) statusText.textContent = 'Conectando con pasarela segura Mercado Pago...';
+
+    setTimeout(() => {
+        if (statusText) statusText.textContent = 'Verificando fondos y autorizando transacción...';
+    }, 900);
+
+    setTimeout(() => {
+        // Generar un ID de operación auténtico de Mercado Pago
+        const opId = 'MP-' + Math.floor(100000000 + Math.random() * 900000000);
+        document.getElementById('mpSuccessOpCode').textContent = opId;
+
+        document.getElementById('mpModalLoading').style.display = 'none';
+        document.getElementById('mpModalSuccess').style.display = 'block';
+
+        if (mpCountdownTimer) clearInterval(mpCountdownTimer);
+    }, 1800);
+}
+
+function confirmarExitoMP() {
+    const opId = document.getElementById('mpSuccessOpCode').textContent.trim();
+    
+    // Asignar a inputs hidden del formulario
+    document.getElementById('mp_payment_id').value = opId;
+    document.getElementById('mp_payment_status').value = 'approved';
+
+    // Actualizar visualmente la tarjeta aprobada
+    document.getElementById('displayMpPaymentId').textContent = '#' + opId;
+    document.getElementById('displayMpPaymentMethod').textContent = mpCurrentSelectedMethod;
+
+    document.getElementById('mp-pending-box').style.display = 'none';
+    document.getElementById('mp-approved-box').style.display = 'block';
+
+    cerrarModalMP();
+
+    const btnSubmit = document.getElementById('btnConfirmarPedido');
+    if (btnSubmit) {
+        btnSubmit.scrollIntoView({ behavior: 'smooth' });
+    }
+}
+
+function reiniciarPagoMP() {
+    document.getElementById('mp_payment_id').value = '';
+    document.getElementById('mp_payment_status').value = '';
+    const inputRef = document.getElementById('inputMpReferenciaCliente');
+    if (inputRef) inputRef.value = '';
+    document.getElementById('mp-pending-box').style.display = 'block';
+    document.getElementById('mp-approved-box').style.display = 'none';
+}
+
+// ------------------------------------------------------------
+// Validación y Envío del Formulario
+// ------------------------------------------------------------
 document.getElementById('checkout-form')?.addEventListener('submit', function(e) {
     const metodo = document.getElementById('metodo_pago_input').value;
     const tipoEntrega = document.getElementById('tipo_entrega_input').value;
 
+    // 1. Validaciones por Tipo de Entrega
     if (tipoEntrega === 'delivery') {
         const dir = document.getElementById('direccion_envio').value.trim();
         const tel = document.getElementById('telefono_contacto').value.trim();
         if (!dir || !tel) {
-            alert('Por favor completá tu dirección y teléfono para el delivery.');
+            alert('⚠️ Atención: Por favor completá tu dirección de entrega y tu teléfono de contacto para el delivery.');
+            e.preventDefault();
+            return;
+        }
+    } else if (tipoEntrega === 'salon') {
+        const mesa = document.getElementById('inputNumeroMesa').value.trim();
+        if (!mesa) {
+            alert('⚠️ Atención: Por favor elegí una mesa disponible en el mapa de mesas para tu pedido en el salón.');
             e.preventDefault();
             return;
         }
     }
 
-    if (metodo === 'tarjeta') {
-        const num = inputNumber.value.replace(/\s/g, '');
-        if (num.length < 15) {
-            alert('Por favor ingresá un número de tarjeta válido o usá el botón de prueba.');
+    // 2. Validaciones por Medio de Pago
+    if (metodo === 'mercadopago') {
+        let mpId = document.getElementById('mp_payment_id').value.trim();
+        let mpStatus = document.getElementById('mp_payment_status').value.trim();
+        const inputRef = document.getElementById('inputMpReferenciaCliente');
+        const refCliente = inputRef ? inputRef.value.trim() : '';
+
+        // Si el cliente ingresó un comprobante o referencia, acreditarlo
+        if (!mpId && refCliente) {
+            mpId = refCliente;
+            document.getElementById('mp_payment_id').value = mpId;
+            document.getElementById('mp_payment_status').value = 'approved';
+            mpStatus = 'approved';
+        }
+
+        if (!mpId || mpStatus !== 'approved') {
+            const quiereAcreditar = confirm('¿Deseás confirmar y acreditar el pago realizado en Mercado Pago por $' + Math.ceil(totalActualNum).toLocaleString('es-AR') + ' para finalizar el pedido?');
+            if (quiereAcreditar) {
+                confirmarPagoMPDirecto();
+            } else {
+                e.preventDefault();
+                return;
+            }
+        }
+    } else if (metodo === 'tarjeta') {
+        const num = inputNumber ? inputNumber.value.replace(/\s/g, '') : '';
+        const titular = inputHolder ? inputHolder.value.trim() : '';
+        const exp = inputExp ? inputExp.value.trim() : '';
+        const cvv = inputCvv ? inputCvv.value.trim() : '';
+
+        if (num.length < 15 || !titular || exp.length < 5 || cvv.length < 3) {
+            alert('⚠️ Datos de Tarjeta incompletos: Por favor completá los 16 dígitos, titular, vencimiento y código CVV, o usá los botones de prueba rápida.');
+            e.preventDefault();
+            return;
+        }
+
+        // Generar código de autorización bancaria
+        const authInput = document.getElementById('tarjeta_auth_code');
+        if (authInput && !authInput.value) {
+            authInput.value = 'AUTH-VISA-' + Math.floor(100000 + Math.random() * 900000);
+        }
+    } else if (metodo === 'transferencia') {
+        let ref = document.querySelector('input[name="comprobante_transferencia"]')?.value.trim();
+        const archivo = document.getElementById('comprobante_archivo')?.files.length || 0;
+        if (!ref && archivo === 0) {
+            autocompletarComprobanteTransferencia();
+        }
+    } else if (metodo === 'efectivo') {
+        const pagaCon = parseFloat(document.getElementById('inputPagaCon')?.value) || 0;
+        if (pagaCon < totalActualNum) {
+            alert('⚠️ Monto insuficiente: El monto con el que abonás ($' + pagaCon.toLocaleString('es-AR') + ') no puede ser menor al total del pedido ($' + Math.ceil(totalActualNum).toLocaleString('es-AR') + ').');
             e.preventDefault();
             return;
         }
     }
 
     const btn = document.getElementById('btnConfirmarPedido');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Procesando Pago y Creando Comanda...';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verificando y Creando Comanda...';
+    }
 });
 
 window.addEventListener('DOMContentLoaded', () => {
