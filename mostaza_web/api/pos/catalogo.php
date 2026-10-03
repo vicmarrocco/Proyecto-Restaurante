@@ -19,14 +19,15 @@ $categorias = [
 ];
 
 $stmt = $conn->query("SELECT * FROM producto WHERE activo = 1 ORDER BY categoria, idproducto");
-$productos = [];
+$productos_por_cat = [];
+$productos_flat = [];
 
 while ($p = $stmt->fetch_assoc()) {
     $cat = $p['categoria'];
-    if (!isset($productos[$cat])) {
-        $productos[$cat] = [];
+    if (!isset($productos_por_cat[$cat])) {
+        $productos_por_cat[$cat] = [];
     }
-    $productos[$cat][] = [
+    $item = [
         'idproducto' => intval($p['idproducto']),
         'nombre' => $p['nombre'],
         'descripcion' => $p['descripcion'],
@@ -35,10 +36,14 @@ while ($p = $stmt->fetch_assoc()) {
         'imagen' => $p['imagen'],
         'categoria' => $p['categoria']
     ];
+    $productos_por_cat[$cat][] = $item;
+    $productos_flat[] = $item;
 }
 
 echo json_encode([
     'ok' => true,
     'categorias' => $categorias,
-    'productos_por_categoria' => $productos
+    'productos_por_categoria' => $productos_por_cat,
+    'productos' => $productos_flat,
+    'total_productos' => count($productos_flat)
 ]);

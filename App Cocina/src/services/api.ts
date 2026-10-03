@@ -178,6 +178,9 @@ export const ApiService = {
           numero_mesa: p.numero_mesa,
           numero_caja: p.numero_caja || 1,
           cajero_nombre: p.cajero_nombre,
+          idempleado_cocinero: p.idempleado_cocinero ? parseInt(p.idempleado_cocinero) : undefined,
+          cocinero_nombre: p.cocinero_nombre || '',
+          duracion_cocina_minutos: p.duracion_cocina_minutos || 0,
           direccion_envio: p.direccion_envio,
           fecha: p.fecha,
           hora: p.hora || 'Ahora',
@@ -197,6 +200,62 @@ export const ApiService = {
       return { ok: true, comandas: peds };
     } catch (e: any) {
       return { ok: false, comandas: [], error: e.message };
+    }
+  },
+
+  async tomarComanda(idpedido: number): Promise<{ ok: boolean; error?: string; mensaje?: string }> {
+    try {
+      const url = `${currentApiUrl}/pos/pedidos.php`;
+      const res = await fetchWithTimeout(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          accion: 'cambiar_estado',
+          idpedido,
+          nuevo_estado: 'En Preparación',
+          idempleado: currentCocinero.idempleado || currentCocinero.id,
+          cocinero_nombre: currentCocinero.nombre_completo || currentCocinero.nombre || 'Cocinero KDS',
+          rol: 'Cocinero',
+          detalles: `Comanda tomada para elaboración por ${currentCocinero.nombre_completo || currentCocinero.nombre}`
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+      return await res.json();
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  },
+
+  async getHistorialCocinero(): Promise<{ ok: boolean; comandas: any[]; error?: string }> {
+    try {
+      const cocId = currentCocinero.idempleado || currentCocinero.id;
+      const url = `${currentApiUrl}/pos/pedidos.php?fecha=hoy&idempleado_cocinero=${cocId}`;
+      const res = await fetchWithTimeout(url, {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+      const data = await res.json();
+      return { ok: true, comandas: data.pedidos || [] };
+    } catch (e: any) {
+      return { ok: false, comandas: [], error: e.message };
+    }
+  },
+
+  async getResumenTurno(): Promise<{ ok: boolean; resumen?: any; error?: string }> {
+    try {
+      const cocId = currentCocinero.idempleado || currentCocinero.id;
+      const regId = currentCocinero.idregistro_turno || 0;
+      const url = `${currentApiUrl}/empleados/resumen_turno.php?idempleado=${cocId}&idregistro_turno=${regId}`;
+      const res = await fetchWithTimeout(url, {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+      const data = await res.json();
+      return { ok: true, resumen: data };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
     }
   },
 

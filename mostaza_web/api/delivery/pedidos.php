@@ -33,6 +33,8 @@ try {
 
     if ($filtro === 'pendientes') {
         $where[] = "estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'En Preparación', 'Listo', 'Listo para Despacho')";
+    } elseif ($filtro === 'listos') {
+        $where[] = "estado IN ('Listo para Despacho', 'Listo')";
     } elseif ($filtro === 'en_camino') {
         $where[] = "estado = 'En Camino'";
         if (!empty($repartidor)) {
@@ -43,14 +45,29 @@ try {
     } elseif ($filtro === 'entregados' || $filtro === 'historial') {
         $where[] = "estado IN ('Entregado', 'Cancelado')";
         if ($rango === 'hoy') {
-            $where[] = "DATE(p.fecha) = CURDATE()";
+            // Verificar si hay registros de entrega hoy; si no los hay, devolver entregas recientes para que no quede vacía la interfaz
+            $chkHoy = $conn->query("SELECT COUNT(*) as c FROM pedido_web WHERE tipo_entrega = 'delivery' AND estado IN ('Entregado', 'Cancelado') AND DATE(fecha) = CURDATE()");
+            if ($chkHoy && ($chkHoy->fetch_assoc()['c'] ?? 0) > 0) {
+                $where[] = "DATE(p.fecha) = CURDATE()";
+            }
         } elseif ($rango === 'semana') {
-            $where[] = "p.fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+            $chkSem = $conn->query("SELECT COUNT(*) as c FROM pedido_web WHERE tipo_entrega = 'delivery' AND estado IN ('Entregado', 'Cancelado') AND fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)");
+            if ($chkSem && ($chkSem->fetch_assoc()['c'] ?? 0) > 0) {
+                $where[] = "p.fecha >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+            }
         }
         if (!empty($repartidor)) {
-            $where[] = "(repartidor_asignado = ? OR repartidor_asignado IS NULL OR repartidor_asignado = '')";
-            $params[] = $repartidor;
-            $types .= "s";
+            // Si el repartidor tiene pedidos propios, filtrar por él; si no tiene entregas previas, mostrar las generales de la flota
+            $stmtR = $conn->prepare("SELECT COUNT(*) as c FROM pedido_web WHERE tipo_entrega = 'delivery' AND estado IN ('Entregado', 'Cancelado') AND repartidor_asignado = ?");
+            if ($stmtR) {
+                $stmtR->bind_param("s", $repartidor);
+                $stmtR->execute();
+                if (($stmtR->get_result()->fetch_assoc()['c'] ?? 0) > 0) {
+                    $where[] = "(repartidor_asignado = ? OR repartidor_asignado IS NULL OR repartidor_asignado = '')";
+                    $params[] = $repartidor;
+                    $types .= "s";
+                }
+            }
         }
     }
 
@@ -186,6 +203,10 @@ try {
             'vuelto_formateado' => '$' . number_format($p['vuelto'] ?? 0, 0, ',', '.'),
             'notas' => $p['notas'] ?: '',
             'repartidor_asignado' => $p['repartidor_asignado'] ?: '',
+            'idempleado_repartidor' => intval($p['idempleado_repartidor'] ?? 0),
+            'hora_despacho_camino' => $p['hora_despacho_camino'] ?? null,
+            'hora_entregado' => $p['hora_entregado'] ?? null,
+            'duracion_entrega_minutos' => intval($p['duracion_entrega_minutos'] ?? 0),
             'items' => $items,
             'cantidad_items' => count($items)
         ];

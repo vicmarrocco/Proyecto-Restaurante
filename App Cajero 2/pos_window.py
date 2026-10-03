@@ -58,6 +58,7 @@ class POSWindow:
         self._start_clock()
         self._load_data()
         self._setup_shortcuts()
+        self._poll_takeaway_badge()
 
     def _build_layout(self):
         for w in self.root.winfo_children():
@@ -172,6 +173,22 @@ class POSWindow:
         )
         btn_arqueo.pack(side="left", padx=3)
 
+        self.btn_takeaway = tk.Button(
+            actions_frame,
+            text="🛍️ Take Away (F4)",
+            font=(FONT_FAMILY, 9, "bold"),
+            bg="#F1F5F9",
+            fg=COLOR_TEXT,
+            activebackground="#E2E8F0",
+            relief="solid",
+            bd=1,
+            cursor="hand2",
+            padx=10,
+            pady=4,
+            command=self._abrir_ventana_takeaway
+        )
+        self.btn_takeaway.pack(side="left", padx=3)
+
         btn_tickets = tk.Button(
             actions_frame,
             text="🧾 Facturas / Tickets",
@@ -190,7 +207,7 @@ class POSWindow:
 
         btn_logout = tk.Button(
             actions_frame,
-            text="🚪 Cerrar Sesión",
+            text="🚪 Cerrar Turno",
             font=(FONT_FAMILY, 9, "bold"),
             bg="#FEE2E2",
             fg="#991B1B",
@@ -1289,6 +1306,7 @@ Vto. CAE: {cae_vto}
 
     def _setup_shortcuts(self):
         self.root.bind("<F2>", lambda e: self.entry_search.focus_set())
+        self.root.bind("<F4>", lambda e: self._abrir_ventana_takeaway())
         self.root.bind("<F8>", lambda e: self._vaciar_comanda())
         self.root.bind("<F10>", lambda e: self._abrir_modal_cobro())
         self.root.bind("<F11>", self._toggle_fullscreen)
@@ -1324,9 +1342,46 @@ Vto. CAE: {cae_vto}
         from arqueo_window import ArqueoWindow
         ArqueoWindow(self.root, self.cajero_info, on_update=self._load_data)
 
+    def _abrir_ventana_takeaway(self):
+        from takeaway_window import TakeAwayWindow
+        TakeAwayWindow(self.root, self.cajero_info, on_update=self._poll_takeaway_badge)
+
+    def _poll_takeaway_badge(self):
+        def fetch():
+            try:
+                res = api.obtener_pedidos_takeaway()
+                if res.get("ok"):
+                    peds = res.get("pedidos", [])
+                    cant_listos = sum(1 for p in peds if p.get("estado") in ["Listo", "Listo para Despacho"])
+                    self.root.after(0, lambda: self._update_takeaway_badge(cant_listos))
+            except Exception:
+                pass
+        threading.Thread(target=fetch, daemon=True).start()
+        # Reprogramar polling cada 3.5s
+        try:
+            self.root.after(3500, self._poll_takeaway_badge)
+        except Exception:
+            pass
+
+    def _update_takeaway_badge(self, cant_listos):
+        if not hasattr(self, "btn_takeaway") or not self.btn_takeaway.winfo_exists():
+            return
+        if cant_listos > 0:
+            self.btn_takeaway.configure(
+                text=f"🛍️ Take Away (F4) [● {cant_listos} LISTOS]",
+                bg="#DCFCE7",
+                fg="#166534"
+            )
+        else:
+            self.btn_takeaway.configure(
+                text="🛍️ Take Away (F4)",
+                bg="#F1F5F9",
+                fg=COLOR_TEXT
+            )
+
     def _abrir_ventana_tickets(self):
         from tickets_window import TicketsWindow
-        TicketsWindow(self.root)
+        TicketsWindow(self.root, self.cajero_info)
 
     def _cerrar_sesion(self):
         if messagebox.askyesno("Cerrar Turno y Salir", "¿Deseas finalizar tu jornada laboral y registrar tu hora de salida?"):

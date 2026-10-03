@@ -4,24 +4,54 @@
 // Panel de Repartidores y Gestión de Delivery
 // ============================================================
 session_start();
-require('conexion.php');
+require_once(__DIR__ . '/conexion.php');
+
+// Función de respaldo para auditoría y actualización del estado del pedido
+if (!function_exists('registrarAuditoriaPedido')) {
+    function registrarAuditoriaPedido($conn, $idpedido, $nuevoEstado, $accion, $rol, $nombre, $idEmpleado, $motivo = '', $repartidorAsignado = null) {
+        if ($repartidorAsignado !== null) {
+            $stmt = $conn->prepare("UPDATE pedido_web SET estado = ?, repartidor_asignado = ? WHERE idpedido = ?");
+            if ($stmt) {
+                $stmt->bind_param("ssi", $nuevoEstado, $repartidorAsignado, $idpedido);
+                $stmt->execute();
+                $stmt->close();
+            }
+        } else {
+            $stmt = $conn->prepare("UPDATE pedido_web SET estado = ? WHERE idpedido = ?");
+            if ($stmt) {
+                $stmt->bind_param("si", $nuevoEstado, $idpedido);
+                $stmt->execute();
+                $stmt->close();
+            }
+        }
+    }
+}
 
 // Procesar cambio de estado de entrega
 if (isset($_POST['accion_delivery'])) {
     $idpedido = intval($_POST['idpedido']);
     $accion = $_POST['accion_delivery'];
-    $repartidor = htmlspecialchars(trim($_POST['repartidor'] ?? 'Repartidor Mostaza'));
+    $repartidor = trim($_POST['repartidor'] ?? 'Repartidor Mostaza');
 
-    // Obtener ID de empleado del repartidor oficial
-    $resR = $conn->query("SELECT idempleado FROM empleado WHERE fk_id_rol = 6 AND (CONCAT(nombre, ' ', apellido) = '" . $conn->real_escape_string($repartidor) . "' OR nombre = '" . $conn->real_escape_string($repartidor) . "') LIMIT 1");
-    $idEmpleadoR = ($resR && $rowR = $resR->fetch_assoc()) ? intval($rowR['idempleado']) : null;
+    // Obtener ID de empleado del repartidor oficial de forma segura
+    $idEmpleadoR = null;
+    $stmtEmp = $conn->prepare("SELECT idempleado FROM empleado WHERE fk_id_rol = 6 AND (CONCAT(nombre, ' ', apellido) = ? OR nombre = ?) LIMIT 1");
+    if ($stmtEmp) {
+        $stmtEmp->bind_param("ss", $repartidor, $repartidor);
+        $stmtEmp->execute();
+        $resR = $stmtEmp->get_result();
+        if ($resR && $rowR = $resR->fetch_assoc()) {
+            $idEmpleadoR = intval($rowR['idempleado']);
+        }
+        $stmtEmp->close();
+    }
 
     if ($accion === 'en_camino') {
-        registrarAuditoriaPedido($conn, $idpedido, 'En Camino', 'Despacho y Salida a Domicilio', 'Repartidor', $repartidor, $idEmpleadoR, "Asignado a $repartidor para entrega en domicilio");
+        registrarAuditoriaPedido($conn, $idpedido, 'En Camino', 'Despacho y Salida a Domicilio', 'Repartidor', $repartidor, $idEmpleadoR, "Asignado a $repartidor para entrega en domicilio", $repartidor);
     } elseif ($accion === 'entregado') {
         registrarAuditoriaPedido($conn, $idpedido, 'Entregado', 'Entrega Finalizada en Puerta', 'Repartidor', $repartidor, $idEmpleadoR, "Pedido entregado con conformidad del cliente");
         if ($idEmpleadoR) {
-            $conn->query("UPDATE empleado SET viajes_totales = viajes_totales + 1 WHERE idempleado = $idEmpleadoR");
+            $conn->query("UPDATE empleado SET viajes_totales = viajes_totales + 1 WHERE idempleado = " . intval($idEmpleadoR));
         }
     }
 
@@ -150,9 +180,9 @@ if ($resFlota) {
                     </div>
 
                     <div style="background:#F8FAFC;padding:14px;border-radius:10px;margin-bottom:14px;font-size:0.88rem;border:1px solid #E2E8F0;">
-                        <p style="margin-bottom:6px;"><strong><i class="fa-solid fa-user" style="color:var(--admin-dark);"></i> Cliente:</strong> <?= htmlspecialchars($d['nombre'] ? $d['nombre'] . ' ' . $d['apellido'] : 'Cliente Web') ?></p>
+                        <p style="margin-bottom:6px;"><strong><i class="fa-solid fa-user" style="color:var(--admin-dark);"></i> Cliente:</strong> <?= htmlspecialchars(!empty($d['nombre']) ? $d['nombre'] . ' ' . $d['apellido'] : 'Cliente Web') ?></p>
                         <p style="margin-bottom:6px; color:#991B1B; font-weight:700;">
-                            <strong><i class="fa-solid fa-store" style="color:var(--admin-rojo);"></i> Despacho desde:</strong> <?= htmlspecialchars($d['sucursal'] ?: 'Mostaza Formosa Centro') ?>
+                            <strong><i class="fa-solid fa-store" style="color:var(--admin-rojo);"></i> Despacho desde:</strong> <?= htmlspecialchars(!empty($d['sucursal']) ? $d['sucursal'] : 'Mostaza Formosa Centro') ?>
                         </p>
                         <p style="margin-bottom:6px;"><strong><i class="fa-solid fa-location-dot" style="color:#EF4444;"></i> Dirección:</strong> <?= htmlspecialchars($d['direccion_envio'] ?? 'Formosa Centro') ?></p>
                         <?php if (!empty($d['referencia_entrega'])): ?>
@@ -161,8 +191,8 @@ if ($resFlota) {
                             </p>
                         <?php endif; ?>
                         <p style="margin-bottom:6px;"><strong><i class="fa-solid fa-phone" style="color:#2563EB;"></i> Teléfono:</strong> 
-                            <a href="tel:<?= urlencode($d['telefono_contacto'] ?: ($d['user_tel'] ?? '')) ?>" style="color:#2563EB;text-decoration:none;font-weight:700;">
-                                <?= htmlspecialchars($d['telefono_contacto'] ?: ($d['user_tel'] ?? 'Sin teléfono')) ?>
+                            <a href="tel:<?= urlencode(!empty($d['telefono_contacto']) ? $d['telefono_contacto'] : ($d['user_tel'] ?? '')) ?>" style="color:#2563EB;text-decoration:none;font-weight:700;">
+                                <?= htmlspecialchars(!empty($d['telefono_contacto']) ? $d['telefono_contacto'] : ($d['user_tel'] ?? 'Sin teléfono')) ?>
                             </a>
                         </p>
                         <?php if (!empty($d['notas'])): ?>
@@ -193,7 +223,7 @@ if ($resFlota) {
                                 <span>COBRAR EN DESTINO:</span>
                                 <span>$<?= number_format($d['total'], 0, ',', '.') ?></span>
                             </div>
-                            <?php if ($d['paga_con']): ?>
+                            <?php if (!empty($d['paga_con'])): ?>
                                 <div style="font-size:0.8rem;color:#64748B;margin-top:4px;">
                                     Cliente abona con $<?= number_format($d['paga_con'], 0, ',', '.') ?> · Vuelto: <strong>$<?= number_format($d['vuelto'], 0, ',', '.') ?></strong>
                                 </div>
@@ -217,7 +247,7 @@ if ($resFlota) {
                                     <option value="">-- Asignar Repartidor Oficial --</option>
                                     <?php foreach ($flotaOficial as $ro): ?>
                                         <option value="<?= htmlspecialchars($ro['nombre']) ?>" <?= ($d['repartidor_asignado'] ?? '') === $ro['nombre'] ? 'selected' : '' ?>>
-                                            <?= htmlspecialchars($ro['avatar'] ?: '🛵') ?> <?= htmlspecialchars($ro['nombre']) ?> (<?= htmlspecialchars($ro['patente']) ?>)
+                                            <?= htmlspecialchars(!empty($ro['avatar']) ? $ro['avatar'] : '🛵') ?> <?= htmlspecialchars($ro['nombre']) ?> (<?= htmlspecialchars($ro['patente']) ?>)
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -230,6 +260,7 @@ if ($resFlota) {
                         <form method="post" action="repartidor.php">
                             <input type="hidden" name="idpedido" value="<?= $d['idpedido'] ?>">
                             <input type="hidden" name="accion_delivery" value="entregado">
+                            <input type="hidden" name="repartidor" value="<?= htmlspecialchars($d['repartidor_asignado'] ?? '') ?>">
                             <button type="submit" class="btn-admin" style="width:100%;justify-content:center;padding:10px;background:#16A34A;color:#fff;">
                                 <i class="fa-solid fa-circle-check"></i> Marcar como Entregado (<?= htmlspecialchars($d['repartidor_asignado'] ?? 'Repartidor') ?>)
                             </button>
@@ -238,7 +269,10 @@ if ($resFlota) {
                 </div>
 
             </div>
-            <?php endwhile; ?>
+            <?php 
+                if (isset($stmtDet)) { $stmtDet->close(); }
+            endwhile; 
+            ?>
         </div>
 
     <?php endif; ?>

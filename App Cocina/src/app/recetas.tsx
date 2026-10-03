@@ -4,12 +4,12 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   TextInput,
   ActivityIndicator,
   RefreshControl,
   TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiService } from '@/services/api';
 import { Receta } from '@/types/cocina';
 import { MostazaColors } from '@/constants/Colors';
@@ -24,7 +24,7 @@ export default function RecetasScreen() {
   const cargarRecetas = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     const res = await ApiService.getRecetas();
-    if (res.ok) {
+    if (res.ok && Array.isArray(res.recetas)) {
       setRecetas(res.recetas);
     }
     setLoading(false);
@@ -35,14 +35,15 @@ export default function RecetasScreen() {
     cargarRecetas();
   }, [cargarRecetas]);
 
-  const categorias = ['Todas', ...Array.from(new Set(recetas.map((r) => r.categoria)))];
+  const safeRecetas = Array.isArray(recetas) ? recetas : [];
+  const categorias = ['Todas', ...Array.from(new Set(safeRecetas.map((r) => r.categoria).filter(Boolean)))];
 
-  const recetasFiltradas = recetas.filter((r) => {
+  const recetasFiltradas = safeRecetas.filter((r) => {
     const matchCat = categoriaActiva === 'Todas' || r.categoria === categoriaActiva;
     const matchTxt =
       !busqueda ||
-      r.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      r.ingredientes.toLowerCase().includes(busqueda.toLowerCase());
+      (r.nombre && r.nombre.toLowerCase().includes(busqueda.toLowerCase())) ||
+      (r.ingredientes && r.ingredientes.toLowerCase().includes(busqueda.toLowerCase()));
     return matchCat && matchTxt;
   });
 

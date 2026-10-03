@@ -47,3 +47,42 @@ export interface ItemComanda {
   cantidad: number;
   modificadores?: string;
 }
+
+export interface PedidoSalon {
+  idpedido: number;
+  tipo_entrega: string;
+  numero_mesa?: number;
+  cliente: string;
+  total: number;
+  total_formateado: string;
+  metodo_pago: string;
+  estado_pago?: string;
+  estado: string;
+  origen: 'online' | 'presencial';
+  es_online: boolean;
+  hora: string;
+  fecha: string;
+  idfactura?: number;
+  numero_factura?: string;
+  idempleado_mesero?: number;
+  mesero_nombre?: string;
+  cocinero_nombre?: string;
+  items: Array<{
+    idproducto: number;
+    descripcion: string;
+    cantidad: number;
+    precio_unitario: number;
+    subtotal: number;
+    modificadores?: string;
+  }>;
+}
+
+export interface ResumenTurnoMesero {
+  horas_trabajadas: number;
+  mesas_atendidas: number;
+  total_recaudado: number;
+  total_recaudado_formateado: string;
+  ticket_promedio: string;
+  tiempo_promedio_servicio: string;
+  hora_entrada: string;
+}

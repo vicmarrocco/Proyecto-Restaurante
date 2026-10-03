@@ -81,8 +81,10 @@ if ($estado === 'Recibido') {
         $paso = 3;
         $porcentajeFill = '78%';
         if ($tipoEntrega === 'salon') {
-            $titulo = '¡Tu comanda está lista!';
-            $descripcion = !empty($mesa) ? "Tu pedido está listo y servido en la Mesa #$mesa." : "Tu pedido está listo para retirar en el salón.";
+            $titulo = '¡Tu comanda está lista en Cocina!';
+            $meseroTxt = !empty($mesero) ? "Tu mesero <strong>" . htmlspecialchars($mesero) . "</strong>" : "Un mesero del salón";
+            $mesaTxt = !empty($mesa) ? " a tu Mesa #$mesa" : " a tu mesa";
+            $descripcion = "¡Tu comanda salió de la parrilla! $meseroTxt ya la lleva en bandeja$mesaTxt.";
         } else {
             $titulo = '¡Tu pedido está listo para retirar!';
             $descripcion = 'Podés acercarte al mostrador con tu número de comanda para retirarlo.';
@@ -98,10 +100,18 @@ if ($estado === 'Recibido') {
 } elseif ($estado === 'Entregado') {
     $paso = 4;
     $porcentajeFill = '100%';
-    $titulo = '¡Pedido Entregado! ¡Que lo disfrutes!';
-    $repTxt = !empty($repartidor) ? "Entregado por <strong>" . htmlspecialchars($repartidor) . "</strong>. " : "";
-    $durTot = $pedido['duracion_total_minutos'] ? " Tiempo total de servicio: {$pedido['duracion_total_minutos']} min." : "";
-    $descripcion = "{$repTxt}¡Gracias por elegir Mostaza!$durTot";
+    $durTot = $pedido['duracion_total_minutos'] ? " Tiempo total: {$pedido['duracion_total_minutos']} min." : "";
+
+    if ($tipoEntrega === 'salon') {
+        $titulo = '¡Comanda Servida en tu Mesa!';
+        $meseroTxt = !empty($mesero) ? "Servido por el mesero <strong>" . htmlspecialchars($mesero) . "</strong>." : "Servido por el personal de salón.";
+        $mesaTxt = !empty($mesa) ? " en la Mesa #$mesa" : "";
+        $descripcion = "¡Tu comida fue entregada$mesaTxt! $meseroTxt ¡Que lo disfrutes!$durTot";
+    } else {
+        $titulo = '¡Pedido Entregado! ¡Que lo disfrutes!';
+        $repTxt = !empty($repartidor) ? "Entregado por <strong>" . htmlspecialchars($repartidor) . "</strong>. " : "";
+        $descripcion = "{$repTxt}¡Gracias por elegir Mostaza!$durTot";
+    }
 } elseif ($estado === 'Cancelado') {
     $esCancelado = true;
     $paso = 0;

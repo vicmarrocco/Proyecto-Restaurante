@@ -6,6 +6,49 @@
 session_start();
 require_once(__DIR__ . '/conexion.php');
 
+// Función de respaldo en caso de que no esté declarada globalmente
+if (!function_exists('registrarAuditoriaPedido')) {
+    function registrarAuditoriaPedido($conn, $idpedido, $nuevoEstado, $accion, $rol, $nombre, $idEmpleado, $motivo = '') {
+        $idpedido = intval($idpedido);
+        if ($idpedido <= 0) return false;
+
+        $stmtP = $conn->prepare("SELECT estado, fecha, hora_recibido, hora_cocina_inicio, hora_cocina_listo FROM pedido_web WHERE idpedido = ?");
+        $stmtP->bind_param("i", $idpedido);
+        $stmtP->execute();
+        $p = $stmtP->get_result()->fetch_assoc();
+        $estadoAnterior = $p['estado'] ?? 'Recibido';
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+
+        // 1. Insertar evento inmutable en pedido_auditoria
+        $stmtAud = $conn->prepare("
+            INSERT INTO pedido_auditoria (idpedido, estado_anterior, estado_nuevo, accion, rol_responsable, idempleado, nombre_responsable, detalles, ip_origen)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        if ($stmtAud) {
+            $stmtAud->bind_param("issssisss", $idpedido, $estadoAnterior, $nuevoEstado, $accion, $rol, $idEmpleado, $nombre, $motivo, $ip);
+            $stmtAud->execute();
+        }
+
+        // 2. Actualizar estado y tiempos en pedido_web
+        $updates = ["`estado` = '" . $conn->real_escape_string($nuevoEstado) . "'"];
+        if (in_array($nuevoEstado, ['En Cocina', 'En Preparacion', 'En Preparación'])) {
+            $updates[] = "`hora_cocina_inicio` = IFNULL(`hora_cocina_inicio`, NOW())";
+            $updates[] = "`cocinero_nombre` = '" . $conn->real_escape_string($nombre) . "'";
+            if ($idEmpleado) $updates[] = "`idempleado_cocinero` = " . intval($idEmpleado);
+        } elseif (in_array($nuevoEstado, ['Listo', 'Listo para Despacho'])) {
+            $updates[] = "`hora_cocina_listo` = NOW()";
+            $updates[] = "`hora_completado_cocina` = NOW()";
+            if (!empty($nombre)) {
+                $updates[] = "`cocinero_nombre` = '" . $conn->real_escape_string($nombre) . "'";
+                if ($idEmpleado) $updates[] = "`idempleado_cocinero` = " . intval($idEmpleado);
+            }
+            $updates[] = "`duracion_cocina_minutos` = GREATEST(1, TIMESTAMPDIFF(MINUTE, IFNULL(hora_cocina_inicio, IFNULL(hora_recibido, fecha)), NOW()))";
+        }
+        $conn->query("UPDATE pedido_web SET " . implode(', ', $updates) . " WHERE idpedido = $idpedido");
+        return true;
+    }
+}
+
 // Procesar inicio de turno del cocinero
 if (isset($_POST['login_cocina'])) {
     $nombreCocinero = trim($_POST['nombre_cocinero'] ?? 'Cocinero de Turno');
@@ -60,15 +103,16 @@ if (isset($_POST['cancelar_comanda_cocina'])) {
 }
 
 $tabActiva = $_GET['tab'] ?? 'pedidos';
+$modoKds = isset($_GET['fullscreen']) || isset($_GET['kds_puro']);
 $cocineroLogueado = !empty($_SESSION['cocinero_nombre']);
-$nombreCocinero = $_SESSION['cocinero_nombre'] ?? 'Cocinero de Turno';
+$nombreCocinero = $_SESSION['cocinero_nombre'] ?? 'Administración / Cocina Central';
 
 // Consultar comandas activas
 $comandas = $conn->query(
     "SELECT p.*, u.nombre, u.apellido 
      FROM pedido_web p 
      LEFT JOIN usuario_web u ON p.idusuario = u.idusuario 
-     WHERE p.estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'Listo para Despacho') 
+     WHERE p.estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'En Preparación', 'Listo para Despacho') 
      ORDER BY p.idpedido ASC"
 );
 
@@ -125,9 +169,9 @@ body.kds-body {
     transition: 0.2s;
 }
 .kds-tab-btn.active, .kds-tab-btn:hover {
-    background: var(--admin-rojo);
+    background: var(--admin-rojo, #A30002);
     color: #fff;
-    border-color: var(--admin-rojo);
+    border-color: var(--admin-rojo, #A30002);
 }
 .kds-modal {
     display: none;
@@ -169,47 +213,82 @@ body.kds-body {
 }
 </style>
 </head>
-<body class="kds-body">
+<body class="admin-body <?= $modoKds ? 'kds-fullscreen' : '' ?>">
+
+<?php if (!$modoKds): ?>
+<!-- Sidebar Administrativo -->
+<aside class="admin-sidebar">
+    <div class="sidebar-brand">
+        <img src="img/logo.png" alt="Mostaza">
+        <div>
+            <h2>MOSTAZA POS</h2>
+            <span>EPET Nº 7 · Sistema Web</span>
+        </div>
+    </div>
+
+    <ul class="sidebar-nav">
+        <li><a href="index.php"><i class="fa-solid fa-chart-pie"></i> Dashboard</a></li>
+        <li><a href="pos.php"><i class="fa-solid fa-cash-register"></i> Punto de Venta (POS)</a></li>
+        <li><a href="mesero.php"><i class="fa-solid fa-utensils"></i> Salón (Mesero)</a></li>
+        <li><a href="cocina.php" class="active"><i class="fa-solid fa-fire-burner"></i> Cocina (KDS)</a></li>
+        <li><a href="repartidor.php"><i class="fa-solid fa-motorcycle"></i> Repartidor</a></li>
+        <li><a href="caja.php"><i class="fa-solid fa-vault"></i> Control de Caja</a></li>
+        <li><a href="inventario.php"><i class="fa-solid fa-boxes-stacked"></i> Inventario & Stock</a></li>
+        <li><a href="reportes.php"><i class="fa-solid fa-file-invoice-dollar"></i> Reportes</a></li>
+        <li style="margin-top:20px;"><a href="../mostaza_web/" target="_blank"><i class="fa-solid fa-store"></i> Ir a la Tienda Web</a></li>
+    </ul>
+
+    <div class="sidebar-footer">
+        Sistema Mostaza v2.5<br>EPET Nº 7 "Vicente Arcadio Salemi"
+    </div>
+</aside>
+<?php endif; ?>
+
+<main class="admin-main" style="<?= $modoKds ? 'margin-left:0;width:100%;padding:0;' : '' ?>">
 
 <!-- TOPBAR COCINA -->
-<div class="kds-topbar">
+<div class="kds-topbar" style="<?= $modoKds ? 'background:#1E293B;border-bottom-color:#334155;color:#fff;' : '' ?>">
     <div style="display:flex;align-items:center;gap:14px;">
         <img src="img/logo.png" alt="Mostaza" style="width:36px;height:36px;object-fit:contain;">
         <div>
-            <h1 style="font-size:1.25rem;font-weight:900;color:var(--admin-rojo);margin:0;letter-spacing:0.5px;">
+            <h1 style="font-size:1.2rem;font-weight:900;color:<?= $modoKds ? '#FBB728' : 'var(--admin-rojo, #A30002)' ?>;margin:0;letter-spacing:0.5px;">
                 MOSTAZA · APP DE COCINA KDS
             </h1>
-            <span style="font-size:0.8rem;color:#64748B;">
-                Sucursal Formosa Centro · Cocinero: <strong style="color:#0F172A;"><?= htmlspecialchars($nombreCocinero) ?></strong>
+            <span style="font-size:0.8rem;color:<?= $modoKds ? '#94A3B8' : '#64748B' ?>;">
+                Sucursal Formosa Centro · Supervisor / Cocinero: <strong style="color:<?= $modoKds ? '#F8FAFC' : '#0F172A' ?>;"><?= htmlspecialchars($nombreCocinero) ?></strong>
             </span>
         </div>
     </div>
 
     <!-- Navegación por Pestañas -->
     <div class="kds-nav-tabs">
-        <a href="cocina.php?tab=pedidos" class="kds-tab-btn <?= $tabActiva === 'pedidos' ? 'active' : '' ?>">
+        <a href="cocina.php?tab=pedidos<?= $modoKds ? '&fullscreen=1' : '' ?>" class="kds-tab-btn <?= $tabActiva === 'pedidos' ? 'active' : '' ?>">
             <i class="fa-solid fa-fire-burner"></i> Comandas Activas (<?= $comandas ? $comandas->num_rows : 0 ?>)
         </a>
-        <a href="cocina.php?tab=stock" class="kds-tab-btn <?= $tabActiva === 'stock' ? 'active' : '' ?>">
+        <a href="cocina.php?tab=stock<?= $modoKds ? '&fullscreen=1' : '' ?>" class="kds-tab-btn <?= $tabActiva === 'stock' ? 'active' : '' ?>">
             <i class="fa-solid fa-boxes-stacked"></i> Stock Insumos
         </a>
     </div>
 
     <!-- Botones de Utilidad -->
-    <div style="display:flex;gap:10px;align-items:center;">
-        <a href="index.php" class="kds-tab-btn">
-            <i class="fa-solid fa-arrow-left"></i> Panel Admin
-        </a>
-        <a href="pos.php" class="kds-tab-btn">
-            <i class="fa-solid fa-cash-register"></i> POS Salón
-        </a>
+    <div style="display:flex;gap:8px;align-items:center;">
+        <?php if ($modoKds): ?>
+            <a href="cocina.php?tab=<?= $tabActiva ?>" class="kds-tab-btn" title="Volver al panel admin normal">
+                <i class="fa-solid fa-compress"></i> Salir Pantalla Completa
+            </a>
+        <?php else: ?>
+            <a href="cocina.php?tab=<?= $tabActiva ?>&fullscreen=1" class="kds-tab-btn" title="Modo Pantalla Completa para Monitor de Cocina TV">
+                <i class="fa-solid fa-expand"></i> Pantalla Completa (TV)
+            </a>
+        <?php endif; ?>
+
         <button onclick="document.getElementById('modalPoliticas').classList.add('open')" class="kds-tab-btn">
-            <i class="fa-solid fa-shield-halved"></i> Políticas BPM
+            <i class="fa-solid fa-shield-halved"></i> BPM
         </button>
 
         <?php if (!$cocineroLogueado): ?>
-            <button onclick="document.getElementById('modalLogin').classList.add('open')" class="kds-tab-btn" style="background:var(--admin-rojo);color:#fff;border-color:var(--admin-rojo);">
-                <i class="fa-solid fa-id-badge"></i> Iniciar Turno
+            <button onclick="document.getElementById('modalLogin').classList.add('open')" class="kds-tab-btn" style="background:var(--admin-rojo, #A30002);color:#fff;border-color:var(--admin-rojo, #A30002);">
+                <i class="fa-solid fa-id-badge"></i> Fichar Cocinero
             </button>
         <?php else: ?>
             <a href="cocina.php?cerrar_turno=1" onclick="return confirm('¿Finalizar turno de cocina?')" class="kds-tab-btn" style="background:#DC2626;color:#fff;border-color:#DC2626;">
@@ -219,8 +298,24 @@ body.kds-body {
     </div>
 </div>
 
-<div style="padding:24px;">
+<div style="padding: <?= $modoKds ? '20px' : '24px' ?>;">
 
+    <!-- Banner Sincronización con App Móvil Expo -->
+    <div style="background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:14px;padding:14px 20px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:center;gap:16px;">
+        <div style="display:flex;align-items:center;gap:14px;">
+            <span style="font-size:2rem;">📱</span>
+            <div>
+                <strong style="color:#92400E;font-size:0.95rem;">Aplicación Móvil KDS en Expo Go (Servidor Central: 10.0.5.77)</strong>
+                <p style="margin:2px 0 0;font-size:0.82rem;color:#78350F;">
+                    Los cocineros operan principalmente desde sus tablets o celulares montados en cocina con la <strong>App Cocina (Expo Go)</strong>. Todo cambio impacta en tiempo real en este panel web administrativo y en la auditoría de pedidos.
+                </p>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <span style="background:#10B981;color:#fff;font-size:0.75rem;font-weight:800;padding:4px 10px;border-radius:50px;display:inline-flex;align-items:center;gap:5px;">
+                <i class="fa-solid fa-circle" style="font-size:0.5rem;"></i> Sincronizado en Vivo
+            </span>
+        </div>
     <!-- TAB 1: COMANDAS ACTIVAS -->
     <?php if ($tabActiva === 'pedidos'): ?>
         
@@ -247,9 +342,9 @@ body.kds-body {
                         <div class="kds-ticket-header">
                             <div>
                                 <strong style="font-size:1.15rem;">Comanda #<?= $c['idpedido'] ?></strong>
-                                <div style="font-size:0.8rem;color:var(--admin-rojo);font-weight:800;margin-top:2px;">
+                                <div style="font-size:0.8rem;color:var(--admin-rojo, #A30002);font-weight:800;margin-top:2px;">
                                     <?= strtoupper($c['tipo_entrega']) ?>
-                                    <?php if ($c['tipo_entrega'] === 'salon' && $c['numero_mesa']): ?>
+                                    <?php if ($c['tipo_entrega'] === 'salon' && !empty($c['numero_mesa'])): ?>
                                         <span style="background:#A30002;color:#fff;font-size:0.75rem;padding:2px 8px;border-radius:4px;font-weight:800;margin-left:4px;">MESA <?= $c['numero_mesa'] ?></span>
                                     <?php endif; ?>
                                 </div>
@@ -260,7 +355,7 @@ body.kds-body {
                         </div>
 
                         <div style="font-size:0.82rem;color:#64748B;margin-bottom:14px;">
-                            Cliente: <strong style="color:#0F172A;"><?= htmlspecialchars($c['nombre'] ? $c['nombre'] . ' ' . $c['apellido'] : 'Consumidor Final') ?></strong>
+                            Cliente: <strong style="color:#0F172A;"><?= htmlspecialchars(!empty($c['nombre']) ? $c['nombre'] . ' ' . $c['apellido'] : 'Consumidor Final') ?></strong>
                             <?php if ($c['tipo_entrega'] === 'delivery'): ?>
                                 <br><span style="color:#2563EB;font-weight:700;">🛵 Delivery · <?= htmlspecialchars($c['direccion_envio'] ?? 'Formosa') ?></span>
                             <?php endif; ?>
@@ -269,7 +364,7 @@ body.kds-body {
                         <div style="border-top:1px dashed #CBD5E1;padding-top:10px;">
                             <?php while ($it = $items->fetch_assoc()): ?>
                             <div class="kds-item-row">
-                                <span style="font-weight:900;color:var(--admin-rojo);margin-right:8px;"><?= $it['cantidad'] ?>x</span>
+                                <span style="font-weight:900;color:var(--admin-rojo, #A30002);margin-right:8px;"><?= $it['cantidad'] ?>x</span>
                                 <div style="flex:1;">
                                     <strong style="color:#0F172A;"><?= htmlspecialchars($it['descripcion']) ?></strong>
                                     <?php if (!empty($it['modificadores'])): ?>
@@ -357,16 +452,15 @@ body.kds-body {
                 </div>
             </div>
         </div>
-
     <?php endif; ?>
-
 </div>
+</main>
 
 <!-- Modal Políticas BPM -->
 <div class="kds-modal" id="modalPoliticas">
     <div class="kds-modal-content">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #E2E8F0;padding-bottom:12px;margin-bottom:16px;">
-            <h3 style="color:var(--admin-rojo);margin:0;font-size:1.2rem;font-weight:900;"><i class="fa-solid fa-shield-halved"></i> Políticas de Cocina y BPM Mostaza</h3>
+            <h3 style="color:var(--admin-rojo, #A30002);margin:0;font-size:1.2rem;font-weight:900;"><i class="fa-solid fa-shield-halved"></i> Políticas de Cocina y BPM Mostaza</h3>
             <button onclick="document.getElementById('modalPoliticas').classList.remove('open')" style="background:none;border:none;color:#94A3B8;font-size:1.2rem;cursor:pointer;">✕</button>
         </div>
         <div style="font-size:0.9rem;color:#334155;line-height:1.6;">
@@ -384,7 +478,7 @@ body.kds-body {
 <!-- Modal Login Cocinero -->
 <div class="kds-modal" id="modalLogin">
     <div class="kds-modal-content" style="max-width:440px;">
-        <h3 style="color:var(--admin-rojo);margin:0 0 12px;font-size:1.3rem;font-weight:900;">👨‍🍳 Iniciar Turno de Cocina</h3>
+        <h3 style="color:var(--admin-rojo, #A30002);margin:0 0 12px;font-size:1.3rem;font-weight:900;">👨‍🍳 Iniciar Turno de Cocina</h3>
         <p style="font-size:0.85rem;color:#64748B;margin-bottom:16px;">Ingresá tu nombre para registrar tu ingreso en el sistema.</p>
         
         <form method="post" action="cocina.php">

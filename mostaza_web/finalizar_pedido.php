@@ -82,6 +82,24 @@ $horarioRetiro = htmlspecialchars(trim($_POST['horario_retiro'] ?? ''));
 $numeroMesa = !empty($_POST['numero_mesa']) ? intval($_POST['numero_mesa']) : null;
 $notasSalon = htmlspecialchars(trim($_POST['notas_salon'] ?? ''));
 
+// Validación en tiempo real de disponibilidad de mesa para Salón
+if ($tipoEntrega === 'salon') {
+    if (!$numeroMesa) {
+        header("Location: carrito.php?error=" . urlencode("Debés seleccionar una mesa para tu pedido en el salón."));
+        exit;
+    }
+    $chkMesa = $conn->prepare("SELECT estado FROM mesa WHERE numero_mesa = ?");
+    $chkMesa->bind_param("i", $numeroMesa);
+    $chkMesa->execute();
+    $rMesa = $chkMesa->get_result()->fetch_assoc();
+    if ($rMesa && $rMesa['estado'] === 'ocupada') {
+        header("Location: carrito.php?error=" . urlencode("La Mesa #$numeroMesa acaba de ser ocupada en el salón. Por favor elegí otra mesa disponible."));
+        exit;
+    }
+    // Marcar mesa como ocupada
+    $conn->query("UPDATE mesa SET estado = 'ocupada' WHERE numero_mesa = $numeroMesa");
+}
+
 $metodoPago = in_array($_POST['metodo_pago'] ?? '', ['tarjeta', 'mercadopago', 'transferencia', 'efectivo']) ? $_POST['metodo_pago'] : 'tarjeta';
 $mpPaymentId = htmlspecialchars(trim($_POST['mp_payment_id'] ?? ''));
 $mpPaymentStatus = htmlspecialchars(trim($_POST['mp_payment_status'] ?? ''));

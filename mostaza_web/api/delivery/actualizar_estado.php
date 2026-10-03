@@ -37,6 +37,24 @@ try {
     $accionAudit = "Actualización de Delivery a $nuevoEstado";
     $detallesAudit = "Gestión por Repartidor Oficial: $repartidor";
 
+    // BLOQUEO ANTI-COLISIÓN EN DELIVERY:
+    // Verificar si otro repartidor ya tomó el pedido en viaje
+    if ($nuevoEstado === 'En Camino') {
+        $stmtChk = $conn->prepare("SELECT idpedido, estado, repartidor_asignado, idempleado_repartidor FROM pedido_web WHERE idpedido = ?");
+        $stmtChk->bind_param("i", $idpedido);
+        $stmtChk->execute();
+        $pRep = $stmtChk->get_result()->fetch_assoc();
+        if ($pRep) {
+            if ($pRep['estado'] === 'En Camino' && !empty($pRep['idempleado_repartidor']) && $idEmpleado && intval($pRep['idempleado_repartidor']) !== intval($idEmpleado)) {
+                echo json_encode([
+                    'ok' => false,
+                    'error' => "El pedido #$idpedido ya fue tomado por el repartidor {$pRep['repartidor_asignado']}."
+                ]);
+                exit();
+            }
+        }
+    }
+
     if ($nuevoEstado === 'En Camino') {
         $accionAudit = "Despachado y en Viaje a Domicilio";
         $detallesAudit = "El repartidor $repartidor retiró el pedido y se dirige al domicilio del cliente.";

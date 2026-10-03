@@ -152,6 +152,14 @@ $_SESSION['mesero_idregistro'] = $idregistro_turno;
 
 $nombreCompleto = $emp['nombre'] . ' ' . $emp['apellido'];
 
+// Obtener sección asignada para meseros
+$idSeccion = (int)($emp['fk_id_seccion'] ?? 1);
+$seccionNombre = 'Salón Principal';
+$resSec = $conn->query("SELECT nombre FROM seccion_mesa WHERE idseccion = $idSeccion LIMIT 1");
+if ($resSec && $rowSec = $resSec->fetch_assoc()) {
+    $seccionNombre = $rowSec['nombre'];
+}
+
 $empleadoData = [
     'id' => (int)$emp['idempleado'],
     'idempleado' => (int)$emp['idempleado'],
@@ -170,6 +178,9 @@ $empleadoData = [
     'calificacion' => floatval($emp['calificacion'] ?? 4.95),
     'viajes_totales' => intval($emp['viajes_totales'] ?? 0),
     'estado_servicio' => $emp['estado_servicio'] ?: 'Disponible',
+    'fk_id_seccion' => $idSeccion,
+    'idseccion' => $idSeccion,
+    'seccion_nombre' => $seccionNombre,
     'idregistro_turno' => $idregistro_turno,
     'idturno' => $idturno,
     'turno' => $nombreTurno,

@@ -16,7 +16,19 @@ export interface ComandaCocina {
   minutos_espera: number;
   estado: string;
   sucursal: string;
+  idempleado_cocinero?: number;
+  cocinero_nombre?: string;
+  duracion_cocina_minutos?: number;
   items: DetalleItemCocina[];
+}
+
+export interface ResumenTurnoCocinero {
+  horas_trabajadas: number;
+  comandas_elaboradas: number;
+  items_cocinados: number;
+  tiempo_promedio_minutos: number;
+  hora_entrada: string;
+  hora_actual: string;
 }
 
 export interface Receta {

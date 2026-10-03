@@ -7,8 +7,8 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiService } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { MostazaColors } from '@/constants/Colors';
@@ -92,8 +92,8 @@ export default function PerfilScreen() {
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
             <TouchableOpacity
               style={[styles.btnQuick, { backgroundColor: '#1E3A8A' }]}
-              onPress={() => setApiUrl('http://192.168.1.237/PROYECTO_REST/mostaza_web/api')}>
-              <Text style={{ fontSize: 11, color: '#93C5FD', fontWeight: '800' }}>📱 WiFi (192.168.1.237)</Text>
+              onPress={() => setApiUrl('http://10.0.5.77/PROYECTO_REST/mostaza_web/api')}>
+              <Text style={{ fontSize: 11, color: '#93C5FD', fontWeight: '800' }}>📱 WiFi (10.0.5.77)</Text>
             </TouchableOpacity>
 
             <TouchableOpacity

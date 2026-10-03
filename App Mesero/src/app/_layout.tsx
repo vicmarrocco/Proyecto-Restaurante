@@ -40,7 +40,7 @@ function MeseroGate() {
           shadowRadius: 6,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '800',
         },
       }}>
@@ -48,21 +48,35 @@ function MeseroGate() {
         name="index"
         options={{
           title: 'Mesas Salón',
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>🍽️</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 18 }}>🍽️</Text>,
+        }}
+      />
+      <Tabs.Screen
+        name="pedidos"
+        options={{
+          title: 'Pedidos Salón',
+          tabBarIcon: () => <Text style={{ fontSize: 18 }}>🛎️</Text>,
         }}
       />
       <Tabs.Screen
         name="comanda"
         options={{
           title: 'Tomar Comanda',
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>📝</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 18 }}>📝</Text>,
+        }}
+      />
+      <Tabs.Screen
+        name="historial"
+        options={{
+          title: 'Mi Historial',
+          tabBarIcon: () => <Text style={{ fontSize: 18 }}>📊</Text>,
         }}
       />
       <Tabs.Screen
         name="perfil"
         options={{
-          title: 'Ajustes',
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>⚙️</Text>,
+          title: 'Mi Turno',
+          tabBarIcon: () => <Text style={{ fontSize: 18 }}>👤</Text>,
         }}
       />
       <Tabs.Screen

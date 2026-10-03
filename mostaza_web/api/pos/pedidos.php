@@ -47,9 +47,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Identificar empleado y rol
         $idEmpleado = !empty($input['idempleado']) ? intval($input['idempleado']) : ($_SESSION['cocinero_id'] ?? ($_SESSION['cajero_id'] ?? null));
-        $nombreResp = trim($input['empleado_nombre'] ?? ($input['cocinero_nombre'] ?? ($_SESSION['cocinero_nombre'] ?? ($_SESSION['cajero_nombre'] ?? 'Personal de Cocina'))));
-        $rolResp = trim($input['rol'] ?? (in_array($nuevoEstado, ['En Preparacion', 'En Preparación', 'En Cocina', 'Listo para Despacho', 'Listo']) ? 'Cocinero' : 'Cajero'));
+        $nombreResp = trim($input['empleado_nombre'] ?? ($input['cocinero_nombre'] ?? ($input['mesero_nombre'] ?? ($_SESSION['cocinero_nombre'] ?? ($_SESSION['mesero_nombre'] ?? ($_SESSION['cajero_nombre'] ?? 'Personal de Cocina'))))));
+        $rolResp = trim($input['rol'] ?? (in_array($nuevoEstado, ['En Preparacion', 'En Preparación', 'En Cocina', 'Listo para Despacho', 'Listo']) ? 'Cocinero' : ($nuevoEstado === 'Entregado' ? 'Mesero' : 'Cajero')));
         $detalles = trim($input['detalles'] ?? "Actualización de comanda a '$nuevoEstado'");
+
+        // BLOQUEO ANTI-COLISIÓN EN COCINA KDS:
+        // Si otro cocinero ya tomó la comanda en preparación, rechazar la operación
+        if (in_array($nuevoEstado, ['En Preparacion', 'En Preparación'])) {
+            $stmtCoc = $conn->prepare("SELECT idempleado_cocinero, cocinero_nombre, estado FROM pedido_web WHERE idpedido = ?");
+            $stmtCoc->bind_param("i", $idpedido);
+            $stmtCoc->execute();
+            $pCoc = $stmtCoc->get_result()->fetch_assoc();
+            if ($pCoc && !empty($pCoc['idempleado_cocinero']) && $idEmpleado && intval($pCoc['idempleado_cocinero']) !== intval($idEmpleado)) {
+                echo json_encode([
+                    'ok' => false,
+                    'error' => "La comanda #$idpedido ya está siendo preparada por {$pCoc['cocinero_nombre']}."
+                ]);
+                exit();
+            }
+        }
 
         // Registrar auditoría estricta (actualiza pedido_auditoria e hitos en pedido_web)
         registrarAuditoriaPedido($conn, $idpedido, $nuevoEstado, "Comanda $nuevoEstado", $rolResp, $nombreResp, $idEmpleado, $detalles);
@@ -118,14 +134,39 @@ if ($fecha !== 'todas') {
     $types .= "s";
 }
 
+$tipoEntrega = $_GET['tipo_entrega'] ?? null;
+$idCocinero = !empty($_GET['idempleado_cocinero']) ? intval($_GET['idempleado_cocinero']) : null;
+$idMesero = !empty($_GET['idempleado_mesero']) ? intval($_GET['idempleado_mesero']) : null;
+
+if (!empty($tipoEntrega) && $tipoEntrega !== 'todos') {
+    $sql .= " AND p.tipo_entrega = ?";
+    $params[] = $tipoEntrega;
+    $types .= "s";
+}
+
+if ($idCocinero) {
+    $sql .= " AND p.idempleado_cocinero = ?";
+    $params[] = $idCocinero;
+    $types .= "i";
+}
+
+if ($idMesero) {
+    $sql .= " AND p.idempleado_mesero = ?";
+    $params[] = $idMesero;
+    $types .= "i";
+}
+
 if ($idarqueo) {
     $sql .= " AND p.idarqueo = ?";
     $params[] = $idarqueo;
     $types .= "i";
 } elseif ($idempleado) {
-    $sql .= " AND p.idempleado = ?";
+    $sql .= " AND (p.idempleado = ? OR p.idempleado_cajero = ? OR p.idempleado_mesero = ? OR p.idempleado_cocinero = ?)";
     $params[] = $idempleado;
-    $types .= "i";
+    $params[] = $idempleado;
+    $params[] = $idempleado;
+    $params[] = $idempleado;
+    $types .= "iiii";
 }
 
 $sql .= " ORDER BY p.idpedido DESC LIMIT 200";
@@ -183,9 +224,26 @@ while ($row = $res->fetch_assoc()) {
         'total' => $tot,
         'total_formateado' => '$' . number_format($tot, 0, ',', '.'),
         'paga_con' => floatval($row['paga_con'] ?? $tot),
-        'vuelto' => floatval($row['vuelto'] ?? 0),
         'estado' => $row['estado'],
+        'estado_pago' => $row['estado_pago'] ?? 'Aprobado',
         'cajero' => $cajeroTxt,
+        'cajero_nombre' => $row['cajero_nombre'] ?? $cajeroTxt,
+        'idempleado_cajero' => intval($row['idempleado_cajero'] ?? 0),
+        'cocinero_nombre' => $row['cocinero_nombre'] ?? '',
+        'idempleado_cocinero' => intval($row['idempleado_cocinero'] ?? 0),
+        'mesero_nombre' => $row['mesero_nombre'] ?? '',
+        'idempleado_mesero' => intval($row['idempleado_mesero'] ?? 0),
+        'repartidor_asignado' => $row['repartidor_asignado'] ?? '',
+        'idempleado_repartidor' => intval($row['idempleado_repartidor'] ?? 0),
+        'origen' => (!empty($row['idempleado_mesero']) || !empty($row['idempleado_cajero'])) ? 'presencial' : 'online',
+        'es_online' => (empty($row['idempleado_mesero']) && empty($row['idempleado_cajero'])),
+        'hora_recibido' => $row['hora_recibido'] ?? null,
+        'hora_cocina_inicio' => $row['hora_cocina_inicio'] ?? null,
+        'hora_cocina_listo' => $row['hora_cocina_listo'] ?? null,
+        'hora_entregado' => $row['hora_entregado'] ?? null,
+        'duracion_cocina_minutos' => intval($row['duracion_cocina_minutos'] ?? 0),
+        'duracion_entrega_minutos' => intval($row['duracion_entrega_minutos'] ?? 0),
+        'duracion_total_minutos' => intval($row['duracion_total_minutos'] ?? 0),
         'cliente' => $clienteTxt,
         'items' => $items
     ];

@@ -5,7 +5,7 @@ Terminal de Punto de Venta para Cajeros
 
 # URLs de la API REST central (detecta automáticamente el host local)
 API_BASE_URLS = [
-    "http://192.168.1.237/PROYECTO_REST/mostaza_web/api",
+    "http://10.0.5.77/PROYECTO_REST/mostaza_web/api",
     "http://localhost/PROYECTO_REST/mostaza_web/api",
     "http://127.0.0.1/PROYECTO_REST/mostaza_web/api",
     "http://localhost/osi/mostaza_web/api",

@@ -441,9 +441,15 @@ if ($sucursalesWebRes) {
                             <label style="font-weight:700;font-size:0.95rem;color:#111827;display:block;margin-bottom:6px;">
                                 <i class="fa-solid fa-chair" style="color:var(--rojo);"></i> Seleccioná tu Mesa en el Salón *
                             </label>
-                            <span style="font-size:0.85rem;color:#64748B;display:block;margin-bottom:12px;">
-                                Elegí la sección del local y hacé clic sobre una mesa disponible (en verde).
-                            </span>
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                                <span style="font-size:0.85rem;color:#64748B;">
+                                    Elegí la sección del local y hacé clic sobre una mesa disponible (en verde).
+                                </span>
+                                <span id="badgeLiveMesas" style="font-size:0.75rem;font-weight:800;background:#DCFCE7;color:#166534;border:1px solid #86EFAC;padding:3px 10px;border-radius:12px;display:inline-flex;align-items:center;gap:6px;">
+                                    <span style="width:7px;height:7px;border-radius:50%;background:#16A34A;display:inline-block;"></span>
+                                    <span id="badgeLiveMesasTxt">● EN VIVO</span>
+                                </span>
+                            </div>
 
                             <!-- Pestañas de Secciones Web -->
                             <div style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:4px;" id="tabsSeccionesWeb">
@@ -1287,6 +1293,12 @@ function seleccionarEntrega(tipo) {
     document.getElementById('fields-takeaway').style.display = (tipo === 'takeaway') ? 'grid' : 'none';
     document.getElementById('fields-salon').style.display = (tipo === 'salon') ? 'block' : 'none';
 
+    if (tipo === 'salon') {
+        iniciarPollingMesasWeb();
+    } else {
+        detenerPollingMesasWeb();
+    }
+
     if (tipo === 'delivery' && map) {
         setTimeout(() => map.invalidateSize(), 200);
     }
@@ -1567,7 +1579,7 @@ function filtrarSeccionWeb(secId, btn) {
 
 function seleccionarMesaWeb(num, seccionNombre, capacidad, ocupada) {
     if (ocupada) {
-        alert('La Mesa ' + num + ' está actualmente OCUPADA por otros clientes. Por favor seleccioná una mesa disponible en verde.');
+        alert('La Mesa ' + num + ' está actualmente OCUPADA por otros comensales. Por favor, seleccioná una mesa disponible en verde.');
         return;
     }
 
@@ -1588,8 +1600,145 @@ function seleccionarMesaWeb(num, seccionNombre, capacidad, ocupada) {
     const banner = document.getElementById('bannerMesaSeleccionada');
     if (banner) {
         banner.innerHTML = '<span><i class="fa-solid fa-circle-check"></i> Mesa seleccionada: <strong>Mesa ' + num + '</strong> (' + seccionNombre + ' · ' + capacidad + ' personas)</span><span style="font-size:0.8rem;background:#166534;color:#fff;padding:2px 8px;border-radius:12px;">Confirmada</span>';
+        banner.style.background = '#DCFCE7';
+        banner.style.borderColor = '#86EFAC';
+        banner.style.color = '#166534';
     }
 }
+
+// ------------------------------------------------------------
+// POLLING EN TIEMPO REAL Y DINAMISMO REACTIVO DE MESAS SALÓN
+// ------------------------------------------------------------
+let intervalMesasWeb = null;
+
+function iniciarPollingMesasWeb() {
+    detenerPollingMesasWeb();
+    // Primera consulta inmediata
+    consultarMesasEnVivo();
+    // Bucle en segundo plano cada 3.5 segundos
+    intervalMesasWeb = setInterval(consultarMesasEnVivo, 3500);
+}
+
+function detenerPollingMesasWeb() {
+    if (intervalMesasWeb) {
+        clearInterval(intervalMesasWeb);
+        intervalMesasWeb = null;
+    }
+}
+
+async function consultarMesasEnVivo() {
+    const inputTipo = document.getElementById('tipo_entrega_input');
+    if (!inputTipo || inputTipo.value !== 'salon') return;
+
+    try {
+        const res = await fetch('api/pos/mesas.php?t=' + Date.now(), { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.ok && Array.isArray(data.mesas)) {
+            actualizarMesasWebEnVivo(data.mesas, data.total_libres, data.total_ocupadas);
+        }
+    } catch (e) {
+        // En caso de corte momentáneo de red, continuar sin bloquear la pantalla
+    }
+}
+
+function actualizarMesasWebEnVivo(mesas, libres, ocupadas) {
+    const badgeTxt = document.getElementById('badgeLiveMesasTxt');
+    if (badgeTxt) {
+        badgeTxt.innerText = `● EN VIVO · ${libres} Libres / ${ocupadas} Ocupadas`;
+    }
+
+    const inputMesa = document.getElementById('inputNumeroMesa');
+    const mesaSeleccionadaActual = inputMesa ? parseInt(inputMesa.value) : 0;
+
+    mesas.forEach(m => {
+        const num = m.numero || m.numero_mesa;
+        const card = document.getElementById('mesa-web-' + num);
+        if (!card) return;
+
+        const isOcupada = !!m.ocupada;
+        const estaSeleccionada = (mesaSeleccionadaActual === num);
+
+        // DETECCIÓN DE COLISIÓN EN TIEMPO REAL:
+        // Si el usuario tenía seleccionada una mesa que acaba de ser ocupada en salón por un mesero
+        if (isOcupada && estaSeleccionada) {
+            inputMesa.value = '';
+            const banner = document.getElementById('bannerMesaSeleccionada');
+            if (banner) {
+                banner.innerHTML = `<span><i class="fa-solid fa-triangle-exclamation"></i> <strong>Atención:</strong> La Mesa #${num} acaba de ser ocupada en el salón. Por favor seleccioná otra mesa libre.</span><span style="font-size:0.8rem;background:#DC2626;color:#fff;padding:2px 8px;border-radius:12px;">Ocupada</span>`;
+                banner.style.background = '#FEE2E2';
+                banner.style.borderColor = '#FECACA';
+                banner.style.color = '#DC2626';
+            }
+        }
+
+        // Actualizar clases y estilos visuales dinámicamente
+        if (isOcupada) {
+            card.classList.remove('mesa-libre', 'mesa-selected');
+            card.classList.add('mesa-ocupada');
+            card.style.background = '#FEF2F2';
+            card.style.borderColor = '#EF4444';
+            card.style.cursor = 'not-allowed';
+
+            const icon = card.querySelector('i');
+            if (icon) icon.style.color = '#EF4444';
+
+            const badgeEstado = card.querySelector('span:last-child');
+            if (badgeEstado) {
+                badgeEstado.style.color = '#DC2626';
+                badgeEstado.innerText = 'OCUPADA';
+            }
+
+            card.onclick = function() {
+                seleccionarMesaWeb(num, m.seccion_nombre || 'Salón', m.capacidad || 4, true);
+            };
+        } else {
+            card.classList.remove('mesa-ocupada');
+            card.classList.add('mesa-libre');
+            card.style.cursor = 'pointer';
+
+            const icon = card.querySelector('i');
+            if (icon) icon.style.color = '#10B981';
+
+            const badgeEstado = card.querySelector('span:last-child');
+            if (badgeEstado) {
+                badgeEstado.style.color = '#166534';
+                badgeEstado.innerText = 'DISPONIBLE';
+            }
+
+            if (estaSeleccionada) {
+                card.style.background = '#FFFBEB';
+                card.style.borderColor = '#F59E0B';
+            } else {
+                card.style.background = '#FFFFFF';
+                card.style.borderColor = '#10B981';
+            }
+
+            card.onclick = function() {
+                seleccionarMesaWeb(num, m.seccion_nombre || 'Salón', m.capacidad || 4, false);
+            };
+        }
+    });
+}
+
+// Iniciar polling si arranca con modalidad Salón seleccionada
+document.addEventListener('DOMContentLoaded', () => {
+    const inputTipo = document.getElementById('tipo_entrega_input');
+    if (inputTipo && inputTipo.value === 'salon') {
+        iniciarPollingMesasWeb();
+    }
+
+    // Soporte para acceso directo por QR en mesa física (?mesa=X)
+    const urlParams = new URLSearchParams(window.location.search);
+    const mesaParam = urlParams.get('mesa');
+    if (mesaParam) {
+        seleccionarEntrega('salon');
+        setTimeout(() => {
+            const card = document.getElementById('mesa-web-' + mesaParam);
+            if (card) card.click();
+        }, 350);
+    }
+});
 
 // ------------------------------------------------------------
 // GENERADOR Y ACTUALIZADOR DINÁMICO DE QR MERCADO PAGO EN JS (EMVCo BCRA)

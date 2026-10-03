@@ -7,9 +7,9 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  SafeAreaView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiService } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { MostazaColors } from '@/constants/Colors';
@@ -64,22 +64,21 @@ export default function LoginScreen() {
     if (res.ok) {
       setDebugCode(res.debug_code || null);
       setStep('codigo');
-      if (res.debug_code) {
-        setCodigo(res.debug_code);
-      }
+      setCodigo(''); // No autocompletar: debe digitarse manualmente
     } else {
       setErrorMsg(res.error || 'No se pudo enviar el código de seguridad.');
     }
   };
 
   const handleVerificarCodigo = async () => {
-    if (!codigo.trim() || codigo.trim().length < 4) {
+    const cleanCode = codigo.replace(/\D/g, '').trim();
+    if (!cleanCode || cleanCode.length < 4) {
       setErrorMsg('Ingresá los 6 dígitos del código.');
       return;
     }
     setSubmitting(true);
     setErrorMsg(null);
-    const res = await loginConCodigo(email.trim(), codigo.trim());
+    const res = await loginConCodigo(email.trim(), cleanCode);
     setSubmitting(false);
 
     if (!res.ok) {
@@ -176,10 +175,10 @@ export default function LoginScreen() {
               <TextInput
                 style={styles.pinInput}
                 value={codigo}
-                onChangeText={setCodigo}
+                onChangeText={(val) => setCodigo(val.replace(/\D/g, ''))}
                 placeholder="000000"
                 placeholderTextColor="#CBD5E1"
-                keyboardType="number-pad"
+                keyboardType="numeric"
                 maxLength={6}
                 autoFocus
               />

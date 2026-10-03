@@ -66,10 +66,17 @@ function CocinaGate() {
         }}
       />
       <Tabs.Screen
+        name="historial"
+        options={{
+          title: 'Mi Historial',
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>⏱️</Text>,
+        }}
+      />
+      <Tabs.Screen
         name="perfil"
         options={{
-          title: 'Ajustes',
-          tabBarIcon: () => <Text style={{ fontSize: 20 }}>⚙️</Text>,
+          title: 'Mi Turno',
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>👤</Text>,
         }}
       />
       <Tabs.Screen

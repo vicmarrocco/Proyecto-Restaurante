@@ -209,20 +209,43 @@ export const ApiService = {
         cache: 'no-store'
       });
       if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
-      return await res.json();
+      const data = await res.json();
+      let productos: ProductoCatalogo[] = [];
+      if (Array.isArray(data.productos)) {
+        productos = data.productos;
+      } else if (data.productos_por_categoria && typeof data.productos_por_categoria === 'object') {
+        Object.values(data.productos_por_categoria).forEach((list: any) => {
+          if (Array.isArray(list)) {
+            productos.push(...list);
+          }
+        });
+      }
+      return { ok: true, productos };
     } catch (e: any) {
       return { ok: false, productos: [], error: e.message };
     }
   },
 
-  async enviarComanda(numeroMesa: number, items: ItemComanda[]): Promise<{ ok: boolean; idpedido?: number; error?: string }> {
+  async enviarComanda(
+    numeroMesa: number,
+    items: ItemComanda[],
+    datosPago: {
+      metodo_pago: string;
+      paga_con?: number;
+      vuelto?: number;
+      comprobante?: string;
+    } = { metodo_pago: 'efectivo' }
+  ): Promise<{ ok: boolean; idpedido?: number; factura?: any; error?: string }> {
     try {
       const subtotal = items.reduce((acc, it) => acc + it.precio * it.cantidad, 0);
       const url = `${currentApiUrl}/pos/crear_venta.php`;
       const payload = {
         tipo_entrega: 'salon',
         numero_mesa: numeroMesa,
-        metodo_pago: 'efectivo',
+        metodo_pago: datosPago.metodo_pago || 'efectivo',
+        paga_con: datosPago.paga_con || subtotal,
+        vuelto: datosPago.vuelto || 0,
+        comprobante: datosPago.comprobante || '',
         subtotal: subtotal,
         total: subtotal,
         idempleado_mesero: currentMesero.idempleado || currentMesero.id || 17,
@@ -236,7 +259,7 @@ export const ApiService = {
           cantidad: it.cantidad,
           subtotal: it.precio * it.cantidad
         })),
-        observaciones: `Comanda tomada en Mesa #${numeroMesa} por ${currentMesero.nombre_completo || currentMesero.nombre}`
+        observaciones: `Comanda y cobro en Mesa #${numeroMesa} por ${currentMesero.nombre_completo || currentMesero.nombre}`
       };
 
       const res = await fetchWithTimeout(url, {
@@ -248,6 +271,83 @@ export const ApiService = {
       return await res.json();
     } catch (e: any) {
       return { ok: false, error: e.message || 'Error al enviar comanda' };
+    }
+  },
+
+  async getPedidosSalon(tipoFiltro: 'todos' | 'online' | 'presencial' = 'todos'): Promise<{ ok: boolean; pedidos: any[]; error?: string }> {
+    try {
+      const url = `${currentApiUrl}/pos/pedidos.php?fecha=hoy&tipo_entrega=salon`;
+      const res = await fetchWithTimeout(url, {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+      const data = await res.json();
+      let peds: any[] = data.pedidos || [];
+      if (tipoFiltro === 'online') {
+        peds = peds.filter(p => p.es_online);
+      } else if (tipoFiltro === 'presencial') {
+        peds = peds.filter(p => !p.es_online);
+      }
+      return { ok: true, pedidos: peds };
+    } catch (e: any) {
+      return { ok: false, pedidos: [], error: e.message };
+    }
+  },
+
+  async confirmarEntregaEnMesa(idpedido: number): Promise<{ ok: boolean; error?: string; mensaje?: string }> {
+    try {
+      const url = `${currentApiUrl}/pos/pedidos.php`;
+      const res = await fetchWithTimeout(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          accion: 'cambiar_estado',
+          idpedido,
+          nuevo_estado: 'Entregado',
+          idempleado: currentMesero.idempleado || currentMesero.id || 17,
+          mesero_nombre: currentMesero.nombre_completo || currentMesero.nombre || 'Mesero Salón',
+          rol: 'Mesero',
+          detalles: `Comanda servida en mesa por ${currentMesero.nombre_completo || currentMesero.nombre}`
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+      return await res.json();
+    } catch (e: any) {
+      return { ok: false, error: e.message };
+    }
+  },
+
+  async getHistorialMesero(): Promise<{ ok: boolean; atenciones: any[]; error?: string }> {
+    try {
+      const mesId = currentMesero.idempleado || currentMesero.id || 17;
+      const url = `${currentApiUrl}/pos/pedidos.php?fecha=hoy&idempleado_mesero=${mesId}&tipo_entrega=salon`;
+      const res = await fetchWithTimeout(url, {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+      const data = await res.json();
+      return { ok: true, atenciones: data.pedidos || [] };
+    } catch (e: any) {
+      return { ok: false, atenciones: [], error: e.message };
+    }
+  },
+
+  async getResumenTurno(): Promise<{ ok: boolean; resumen?: any; error?: string }> {
+    try {
+      const mesId = currentMesero.idempleado || currentMesero.id || 17;
+      const regId = currentMesero.idregistro_turno || 0;
+      const url = `${currentApiUrl}/empleados/resumen_turno.php?idempleado=${mesId}&idregistro_turno=${regId}`;
+      const res = await fetchWithTimeout(url, {
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+      const data = await res.json();
+      return { ok: true, resumen: data };
+    } catch (e: any) {
+      return { ok: false, error: e.message };
     }
   }
 };

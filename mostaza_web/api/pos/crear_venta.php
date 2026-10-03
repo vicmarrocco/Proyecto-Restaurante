@@ -201,6 +201,11 @@ try {
         $conn->query("UPDATE usuario_web SET puntos = puntos + $puntosSumar WHERE idusuario = $idUsuario");
     }
 
+    // 5.1 Si es salón, marcar mesa como ocupada
+    if ($tipoEntrega === 'salon' && $numeroMesa) {
+        $conn->query("UPDATE mesa SET estado = 'ocupada' WHERE numero_mesa = " . intval($numeroMesa));
+    }
+
     // 5.5 Registrar Auditoría Estricta de Empleado
     $rolAudit = ($tipoEntrega === 'salon' && $nombreMesero) ? 'Mesero' : 'Cajero';
     $nombreResp = ($tipoEntrega === 'salon' && $nombreMesero) ? $nombreMesero : $nombreCajero;

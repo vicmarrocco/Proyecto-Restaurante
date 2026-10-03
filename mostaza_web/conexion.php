@@ -109,7 +109,8 @@ function verificarEstructuraWeb($conn) {
         'sucursal_base' => "VARCHAR(100) DEFAULT 'Mostaza Formosa Centro'",
         'estado_servicio' => "ENUM('Disponible', 'En Reparto', 'En Descanso', 'Desconectado') DEFAULT 'Disponible'",
         'calificacion' => "DECIMAL(3,2) DEFAULT 4.95",
-        'viajes_totales' => "INT(11) DEFAULT 0"
+        'viajes_totales' => "INT(11) DEFAULT 0",
+        'fk_id_seccion' => "INT(11) NOT NULL DEFAULT 1"
     ];
     foreach ($nuevasColsEmp as $cName => $cDef) {
         if (!in_array($cName, $empCols)) {
@@ -744,9 +745,14 @@ function registrarAuditoriaPedido($conn, $idpedido, $estadoNuevo, $accion, $rol,
         if ($idempleado) $updates[] = "`idempleado_repartidor` = " . intval($idempleado);
     } elseif ($estadoNuevo === 'Entregado') {
         $updates[] = "`hora_entregado` = NOW()";
-        if (!empty($nombreResponsable) && ($rol === 'Repartidor' || $rol === 'Repartidor Delivery')) {
-            $updates[] = "`repartidor_asignado` = '" . $conn->real_escape_string($nombreResponsable) . "'";
-            if ($idempleado) $updates[] = "`idempleado_repartidor` = " . intval($idempleado);
+        if (!empty($nombreResponsable)) {
+            if ($rol === 'Repartidor' || $rol === 'Repartidor Delivery') {
+                $updates[] = "`repartidor_asignado` = '" . $conn->real_escape_string($nombreResponsable) . "'";
+                if ($idempleado) $updates[] = "`idempleado_repartidor` = " . intval($idempleado);
+            } elseif ($rol === 'Mesero' || $rol === 'Mesero Salón' || $rol === 'Mozo') {
+                $updates[] = "`mesero_nombre` = '" . $conn->real_escape_string($nombreResponsable) . "'";
+                if ($idempleado) $updates[] = "`idempleado_mesero` = " . intval($idempleado);
+            }
         }
         $updates[] = "`duracion_entrega_minutos` = GREATEST(1, TIMESTAMPDIFF(MINUTE, IFNULL(hora_despacho_camino, IFNULL(hora_cocina_listo, fecha)), NOW()))";
         $updates[] = "`duracion_total_minutos` = GREATEST(1, TIMESTAMPDIFF(MINUTE, IFNULL(hora_recibido, fecha), NOW()))";

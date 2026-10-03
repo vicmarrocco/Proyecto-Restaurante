@@ -125,6 +125,30 @@ class APIClient:
         }
         return self._post("/pos/pedidos.php", payload)
 
+    def obtener_pedidos_takeaway(self):
+        """Obtiene las órdenes activas y completadas de Take Away / Mostrador."""
+        return self._get("/pos/pedidos.php", {"fecha": "hoy", "tipo_entrega": "takeaway"})
+
+    def cambiar_estado_pedido(self, idpedido, nuevo_estado, empleado_nombre="Cajero", idempleado=None, rol="Cajero", detalles=""):
+        """Actualiza el estado de una orden (ej: Entregado en mostrador Take Away)."""
+        payload = {
+            "accion": "cambiar_estado",
+            "idpedido": idpedido,
+            "nuevo_estado": nuevo_estado,
+            "empleado_nombre": empleado_nombre,
+            "idempleado": idempleado,
+            "rol": rol,
+            "detalles": detalles or f"Comanda {nuevo_estado} en mostrador {TERMINAL_NOMBRE}"
+        }
+        return self._post("/pos/pedidos.php", payload)
+
+    def obtener_resumen_turno(self, idempleado, idregistro_turno=None):
+        """Obtiene las métricas de rendimiento y recaudación del cajero en su turno."""
+        params = {"idempleado": idempleado}
+        if idregistro_turno:
+            params["idregistro_turno"] = idregistro_turno
+        return self._get("/empleados/resumen_turno.php", params)
+
     # ------------------------------------------------------------
     # MÉTODOS DE CAJA Y ARQUEO MULTI-TERMINAL
     # ------------------------------------------------------------
