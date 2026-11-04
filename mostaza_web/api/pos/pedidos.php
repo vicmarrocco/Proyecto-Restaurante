@@ -1,0 +1,298 @@
+<?php
+// ============================================================
+// api/pos/pedidos.php
+// Consulta historial de pedidos y facturas emitidas de la jornada.
+// ============================================================
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    exit(0);
+}
+
+require_once(__DIR__ . '/../../conexion.php');
+
+// Manejar Acciones de Pedido (POST) - Cambiar Estado y Cancelación
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
+    $idpedido = intval($input['idpedido'] ?? 0);
+    $accion = trim($input['accion'] ?? 'cancelar_pedido');
+
+    if ($idpedido <= 0) {
+        echo json_encode(['ok' => false, 'error' => 'ID de pedido inválido.']);
+        exit();
+    }
+
+    // Verificar pedido
+    $stmtCheck = $conn->prepare("SELECT idpedido, estado, numero_mesa, tipo_entrega FROM pedido_web WHERE idpedido = ?");
+    $stmtCheck->bind_param("i", $idpedido);
+    $stmtCheck->execute();
+    $p = $stmtCheck->get_result()->fetch_assoc();
+
+    if (!$p) {
+        echo json_encode(['ok' => false, 'error' => 'El pedido no existe.']);
+        exit();
+    }
+
+    // 1. Acción: Cambiar Estado (Cocina / POS / Mesero)
+    if ($accion === 'cambiar_estado') {
+        $nuevoEstado = trim($input['nuevo_estado'] ?? '');
+        $estadosValidos = ['Recibido', 'En Preparacion', 'En Preparación', 'En Cocina', 'Listo para Despacho', 'Listo', 'En Camino', 'Entregado'];
+        if (!in_array($nuevoEstado, $estadosValidos)) {
+            echo json_encode(['ok' => false, 'error' => "Estado no válido: $nuevoEstado"]);
+            exit();
+        }
+
+        // Identificar empleado y rol
+        $idEmpleado = !empty($input['idempleado']) ? intval($input['idempleado']) : ($_SESSION['cocinero_id'] ?? ($_SESSION['cajero_id'] ?? null));
+        $nombreResp = trim($input['empleado_nombre'] ?? ($input['cocinero_nombre'] ?? ($input['mesero_nombre'] ?? ($_SESSION['cocinero_nombre'] ?? ($_SESSION['mesero_nombre'] ?? ($_SESSION['cajero_nombre'] ?? 'Personal de Cocina'))))));
+        $rolResp = trim($input['rol'] ?? (in_array($nuevoEstado, ['En Preparacion', 'En Preparación', 'En Cocina', 'Listo para Despacho', 'Listo']) ? 'Cocinero' : ($nuevoEstado === 'Entregado' ? 'Mesero' : 'Cajero')));
+        $detalles = trim($input['detalles'] ?? "Actualización de comanda a '$nuevoEstado'");
+
+        // BLOQUEO ANTI-COLISIÓN EN COCINA KDS:
+        // Si otro cocinero ya tomó la comanda en preparación, rechazar la operación
+        if (in_array($nuevoEstado, ['En Preparacion', 'En Preparación'])) {
+            $stmtCoc = $conn->prepare("SELECT idempleado_cocinero, cocinero_nombre, estado FROM pedido_web WHERE idpedido = ?");
+            $stmtCoc->bind_param("i", $idpedido);
+            $stmtCoc->execute();
+            $pCoc = $stmtCoc->get_result()->fetch_assoc();
+            if ($pCoc && !empty($pCoc['idempleado_cocinero']) && $idEmpleado && intval($pCoc['idempleado_cocinero']) !== intval($idEmpleado)) {
+                echo json_encode([
+                    'ok' => false,
+                    'error' => "La comanda #$idpedido ya está siendo preparada por {$pCoc['cocinero_nombre']}."
+                ]);
+                exit();
+            }
+        }
+
+        // BLOQUEO ANTI-COLISIÓN EN ENTREGA DE MESA (SALÓN):
+        // Si el mesero intenta marcar 'Entregado' en una mesa fuera de su sección
+        if ($nuevoEstado === 'Entregado' && $rolResp === 'Mesero' && $idEmpleado) {
+            $stmtPedMesa = $conn->prepare("SELECT p.tipo_entrega, p.numero_mesa, m.fk_id_seccion, s.nombre AS seccion_nombre FROM pedido_web p LEFT JOIN mesa m ON p.numero_mesa = m.numero_mesa LEFT JOIN seccion_mesa s ON m.fk_id_seccion = s.idseccion WHERE p.idpedido = ?");
+            $stmtPedMesa->bind_param("i", $idpedido);
+            $stmtPedMesa->execute();
+            $pMesaInfo = $stmtPedMesa->get_result()->fetch_assoc();
+
+            if ($pMesaInfo && $pMesaInfo['tipo_entrega'] === 'salon' && !empty($pMesaInfo['numero_mesa'])) {
+                $stmtEmpSec = $conn->prepare("SELECT fk_id_seccion FROM empleado WHERE idempleado = ?");
+                $stmtEmpSec->bind_param("i", $idEmpleado);
+                $stmtEmpSec->execute();
+                $eSecInfo = $stmtEmpSec->get_result()->fetch_assoc();
+
+                if ($pMesaInfo['fk_id_seccion'] && $eSecInfo && intval($pMesaInfo['fk_id_seccion']) !== intval($eSecInfo['fk_id_seccion'])) {
+                    $resSecNom3 = $conn->query("SELECT nombre FROM seccion_mesa WHERE idseccion = " . intval($eSecInfo['fk_id_seccion']));
+                    $miSecNom3 = ($resSecNom3 && $rSN = $resSecNom3->fetch_assoc()) ? $rSN['nombre'] : "Sección #" . $eSecInfo['fk_id_seccion'];
+                    echo json_encode([
+                        'ok' => false,
+                        'error' => "Anticolisión de Secciones: La Mesa #{$pMesaInfo['numero_mesa']} pertenece a '{$pMesaInfo['seccion_nombre']}'. Tu sector asignado es '$miSecNom3'. Solo podés servir platos de tu sector."
+                    ]);
+                    exit();
+                }
+            }
+        }
+
+        // Registrar auditoría estricta (actualiza pedido_auditoria e hitos en pedido_web)
+        registrarAuditoriaPedido($conn, $idpedido, $nuevoEstado, "Comanda $nuevoEstado", $rolResp, $nombreResp, $idEmpleado, $detalles);
+
+        echo json_encode([
+            'ok' => true,
+            'mensaje' => "Comanda #$idpedido actualizada a '$nuevoEstado' por $nombreResp exitosamente.",
+            'idpedido' => $idpedido,
+            'nuevo_estado' => $nuevoEstado,
+            'responsable' => $nombreResp,
+            'rol' => $rolResp
+        ]);
+        exit();
+    }
+
+    // 2. Acción: Cancelar Pedido
+    $motivo = trim($input['motivo_cancelacion'] ?? ($input['motivo'] ?? 'Cancelado por solicitud del cliente en caja'));
+    $canceladoPor = trim($input['cancelado_por'] ?? ($_SESSION['cajero_nombre'] ?? 'Cajero'));
+    $idEmpleado = !empty($input['idempleado']) ? intval($input['idempleado']) : ($_SESSION['cajero_id'] ?? null);
+    $rolCanc = trim($input['rol'] ?? 'Cajero');
+
+    if ($p['estado'] === 'Cancelado') {
+        echo json_encode(['ok' => false, 'error' => 'El pedido ya se encuentra cancelado.']);
+        exit();
+    }
+
+    // Registrar auditoría estricta de cancelación
+    registrarAuditoriaPedido($conn, $idpedido, 'Cancelado', 'Cancelación de Pedido', $rolCanc, $canceladoPor, $idEmpleado, $motivo);
+
+    // Si tenía mesa ocupada, liberarla
+    if (!empty($p['numero_mesa'])) {
+        $mesaNum = intval($p['numero_mesa']);
+        $conn->query("UPDATE mesa SET estado = 'disponible' WHERE numero_mesa = $mesaNum");
+    }
+
+    echo json_encode([
+        'ok' => true,
+        'mensaje' => "Comanda #$idpedido cancelada exitosamente.",
+        'idpedido' => $idpedido,
+        'estado' => 'Cancelado',
+        'motivo' => $motivo
+    ]);
+    exit();
+}
+
+$fecha = $_GET['fecha'] ?? 'hoy';
+$idempleado = !empty($_GET['idempleado']) ? intval($_GET['idempleado']) : null;
+$idarqueo = !empty($_GET['idarqueo']) ? intval($_GET['idarqueo']) : null;
+
+$sql = "SELECT p.*, f.idfactura, f.numero_factura, f.tipo_comprobante, f.cae, f.cae_vto, f.neto_gravado, f.iva_21,
+               u.nombre AS usuario_nombre, u.apellido AS usuario_apellido,
+               e.nombre AS empleado_nombre, e.apellido AS empleado_apellido,
+               m.fk_id_seccion, s.nombre AS seccion_nombre, s.icono AS seccion_icono
+        FROM pedido_web p
+        LEFT JOIN factura f ON p.idpedido = f.idpedido
+        LEFT JOIN usuario_web u ON p.idusuario = u.idusuario
+        LEFT JOIN empleado e ON p.idempleado = e.idempleado
+        LEFT JOIN mesa m ON p.numero_mesa = m.numero_mesa
+        LEFT JOIN seccion_mesa s ON m.fk_id_seccion = s.idseccion
+        WHERE 1=1";
+
+$params = [];
+$types = "";
+
+if ($fecha !== 'todas') {
+    $fechaFiltro = ($fecha === 'hoy' || empty($fecha)) ? date('Y-m-d') : $fecha;
+    $sql .= " AND (DATE(p.fecha) = ? OR p.estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'En Preparación', 'Listo para Despacho', 'Listo'))";
+    $params[] = $fechaFiltro;
+    $types .= "s";
+}
+
+$tipoEntrega = $_GET['tipo_entrega'] ?? null;
+$idCocinero = !empty($_GET['idempleado_cocinero']) ? intval($_GET['idempleado_cocinero']) : null;
+$idMesero = !empty($_GET['idempleado_mesero']) ? intval($_GET['idempleado_mesero']) : null;
+$idSeccion = !empty($_GET['idseccion']) ? intval($_GET['idseccion']) : null;
+
+if (!empty($tipoEntrega) && $tipoEntrega !== 'todos') {
+    $sql .= " AND p.tipo_entrega = ?";
+    $params[] = $tipoEntrega;
+    $types .= "s";
+}
+
+if ($idSeccion) {
+    $sql .= " AND m.fk_id_seccion = ?";
+    $params[] = $idSeccion;
+    $types .= "i";
+}
+
+if ($idCocinero) {
+    $sql .= " AND p.idempleado_cocinero = ?";
+    $params[] = $idCocinero;
+    $types .= "i";
+}
+
+if ($idMesero) {
+    $sql .= " AND p.idempleado_mesero = ?";
+    $params[] = $idMesero;
+    $types .= "i";
+}
+
+if ($idarqueo) {
+    $sql .= " AND p.idarqueo = ?";
+    $params[] = $idarqueo;
+    $types .= "i";
+} elseif ($idempleado) {
+    $sql .= " AND (p.idempleado = ? OR p.idempleado_cajero = ? OR p.idempleado_mesero = ? OR p.idempleado_cocinero = ?)";
+    $params[] = $idempleado;
+    $params[] = $idempleado;
+    $params[] = $idempleado;
+    $params[] = $idempleado;
+    $types .= "iiii";
+}
+
+$sql .= " ORDER BY p.idpedido DESC LIMIT 200";
+
+$stmt = $conn->prepare($sql);
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+$stmt->execute();
+$res = $stmt->get_result();
+
+$pedidos = [];
+$totalRecaudadoHoy = 0.0;
+
+while ($row = $res->fetch_assoc()) {
+    $tot = floatval($row['total']);
+    $totalRecaudadoHoy += $tot;
+
+    // Obtener items
+    $stmtItems = $conn->prepare("SELECT idproducto, descripcion, modificadores, precio_unitario, cantidad, subtotal FROM detalle_pedido_web WHERE idpedido = ?");
+    $stmtItems->bind_param("i", $row['idpedido']);
+    $stmtItems->execute();
+    $resItems = $stmtItems->get_result();
+    $items = [];
+    while ($it = $resItems->fetch_assoc()) {
+        $items[] = [
+            'idproducto' => $it['idproducto'],
+            'descripcion' => $it['descripcion'],
+            'modificadores' => $it['modificadores'],
+            'precio_unitario' => floatval($it['precio_unitario']),
+            'cantidad' => intval($it['cantidad']),
+            'subtotal' => floatval($it['subtotal'])
+        ];
+    }
+
+    $cajeroTxt = !empty($row['empleado_nombre']) ? ($row['empleado_nombre'] . ' ' . $row['empleado_apellido']) : 'Cajero Central';
+    $clienteTxt = !empty($row['usuario_nombre']) ? ($row['usuario_nombre'] . ' ' . $row['usuario_apellido']) : 'Consumidor Final';
+
+    $pedidos[] = [
+        'idpedido' => intval($row['idpedido']),
+        'idfactura' => $row['idfactura'] ? intval($row['idfactura']) : null,
+        'numero_factura' => $row['numero_factura'] ?? ('FAC-B-0001-' . str_pad($row['idpedido'], 8, '0', STR_PAD_LEFT)),
+        'tipo_comprobante' => $row['tipo_comprobante'] ?? 'Factura B',
+        'cae' => $row['cae'] ?? '74123456789012',
+        'cae_vto' => $row['cae_vto'] ? date('d/m/Y', strtotime($row['cae_vto'])) : date('d/m/Y', strtotime('+10 days')),
+        'fecha' => date('d/m/Y H:i:s', strtotime($row['fecha'])),
+        'hora' => date('H:i', strtotime($row['fecha'])),
+        'tipo_entrega' => $row['tipo_entrega'],
+        'numero_mesa' => $row['numero_mesa'] ? intval($row['numero_mesa']) : null,
+        'metodo_pago' => $row['metodo_pago'],
+        'subtotal' => floatval($row['subtotal']),
+        'descuento' => floatval($row['descuento']),
+        'neto_gravado' => floatval($row['neto_gravado'] ?? ($tot / 1.21)),
+        'iva_21' => floatval($row['iva_21'] ?? ($tot - ($tot / 1.21))),
+        'total' => $tot,
+        'total_formateado' => '$' . number_format($tot, 0, ',', '.'),
+        'paga_con' => floatval($row['paga_con'] ?? $tot),
+        'estado' => $row['estado'],
+        'estado_pago' => $row['estado_pago'] ?? 'Aprobado',
+        'cajero' => $cajeroTxt,
+        'cajero_nombre' => $row['cajero_nombre'] ?? $cajeroTxt,
+        'idempleado_cajero' => intval($row['idempleado_cajero'] ?? 0),
+        'cocinero_nombre' => $row['cocinero_nombre'] ?? '',
+        'idempleado_cocinero' => intval($row['idempleado_cocinero'] ?? 0),
+        'mesero_nombre' => $row['mesero_nombre'] ?? '',
+        'idempleado_mesero' => intval($row['idempleado_mesero'] ?? 0),
+        'idseccion' => !empty($row['fk_id_seccion']) ? intval($row['fk_id_seccion']) : null,
+        'seccion_nombre' => $row['seccion_nombre'] ?? null,
+        'seccion_icono' => $row['seccion_icono'] ?? null,
+        'repartidor_asignado' => $row['repartidor_asignado'] ?? '',
+        'idempleado_repartidor' => intval($row['idempleado_repartidor'] ?? 0),
+        'origen' => (!empty($row['idempleado_mesero']) || !empty($row['idempleado_cajero'])) ? 'presencial' : 'online',
+        'es_online' => (empty($row['idempleado_mesero']) && empty($row['idempleado_cajero'])),
+        'hora_recibido' => $row['hora_recibido'] ?? null,
+        'hora_cocina_inicio' => $row['hora_cocina_inicio'] ?? null,
+        'hora_cocina_listo' => $row['hora_cocina_listo'] ?? null,
+        'hora_entregado' => $row['hora_entregado'] ?? null,
+        'duracion_cocina_minutos' => intval($row['duracion_cocina_minutos'] ?? 0),
+        'duracion_entrega_minutos' => intval($row['duracion_entrega_minutos'] ?? 0),
+        'duracion_total_minutos' => intval($row['duracion_total_minutos'] ?? 0),
+        'cliente' => $clienteTxt,
+        'items' => $items
+    ];
+}
+
+echo json_encode([
+    'ok' => true,
+    'fecha' => $fecha,
+    'total_pedidos' => count($pedidos),
+    'total_recaudado' => $totalRecaudadoHoy,
+    'total_recaudado_formateado' => '$' . number_format($totalRecaudadoHoy, 0, ',', '.'),
+    'pedidos' => $pedidos
+]);

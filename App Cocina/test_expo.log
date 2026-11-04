@@ -1,0 +1,10 @@
+Starting project at c:\xampp\htdocs\PROYECTO_REST\App Cocina
+Using src/app as the root directory for Expo Router.
+Starting Metro Bundler
+The following packages should be updated for best compatibility with the installed expo version:
+  @expo/metro-config@0.18.11 - expected version: ~0.19.0
+  metro@0.80.12 - expected version: ^0.81.0
+  react-native@0.76.7 - expected version: 0.76.9
+Your project may not work correctly until you install the expected versions of the packages.
+Waiting on http://localhost:8081
+Logs for your project will appear below.

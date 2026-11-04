@@ -1,0 +1,300 @@
+ 
+:root{
+    --rojo:#A30002;
+    --amarillo:#FBB728;
+    --crema:#F5ECD2;
+}
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    background:var(--crema);
+    font-family:'Montserrat',sans-serif;
+    overflow-x:hidden;
+}
+
+
+header{
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    z-index:999;
+    background:rgba(245,236,210,0.95);
+    backdrop-filter:blur(12px);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:20px 8%;
+    box-shadow:0 8px 25px rgba(0,0,0,.06);
+}
+
+.logo{
+    display:flex;
+    align-items:center;
+    gap:12px;
+}
+
+.logo img{
+    width:55px;
+    height:55px;
+    object-fit:contain;
+}
+
+.logo span{
+    font-size:2rem;
+    font-weight:800;
+    color:var(--rojo);
+    font-family:'Playfair Display',serif;
+}
+
+nav ul{
+    display:flex;
+    gap:30px;
+    list-style:none;
+}
+
+nav a{
+    text-decoration:none;
+    color:#222;
+    font-weight:600;
+    transition:0.3s;
+}
+
+nav a:hover{
+    color:var(--rojo);
+}
+
+
+.btns{
+    display:flex;
+    gap:15px;
+}
+
+.btn-header,
+.btn-header2{
+    padding:12px 22px;
+    border-radius:50px;
+    text-decoration:none;
+    font-weight:600;
+    transition:.3s;
+}
+
+.btn-header{
+    background:var(--rojo);
+    color:white;
+}
+
+.btn-header2{
+    background:var(--amarillo);
+    color:black;
+}
+
+.btn-header:hover,
+.btn-header2:hover{
+    transform:translateY(-3px);
+}
+
+
+
+/*
+BENEFICIOS
+ */
+
+.beneficios{
+    background:var(--amarillo);
+
+    color:white;
+
+    padding:90px 8%;
+
+    display:flex;
+
+    justify-content:space-around;
+
+    text-align:center;
+}
+
+.beneficios i{
+    font-size:3rem;
+    margin-bottom:20px;
+}
+
+
+
+.social{
+    text-align:center;
+    padding:90px 8%;
+}
+
+.social h2{
+    color:var(--rojo);
+
+    font-size:3rem;
+
+    margin-bottom:30px;
+
+    font-family:'Playfair Display',serif;
+}
+
+.social-icons{
+    display:flex;
+    justify-content:center;
+    gap:30px;
+}
+
+.social-icons a{
+    width:70px;
+    height:70px;
+
+    background:white;
+
+    border-radius:50%;
+
+    display:flex;
+
+    justify-content:center;
+
+    align-items:center;
+
+    text-decoration:none;
+
+    transition:0.3s;
+}
+
+.social-icons a:hover{
+    transform:translateY(-8px);
+}
+
+.social-icons i{
+    font-size:2rem;
+    color:var(--rojo);
+}
+
+/*FOOTER */
+
+footer{
+    background:var(--rojo);
+
+    color:white;
+
+    padding:60px 8%;
+
+    display:flex;
+
+    justify-content:space-between;
+
+    gap:50px;
+
+    flex-wrap:wrap;
+}
+
+.footer-map iframe{
+    width:400px;
+    height:250px;
+    border:none;
+    border-radius:20px;
+}
+
+
+/* =========================
+PRODUCTOS
+========================= */
+
+.productos{
+    padding:160px 8% 100px;
+    text-align:center;
+}
+
+.productos h2{
+    font-size:3rem;
+    color:var(--rojo);
+    margin-bottom:50px;
+    font-family:'Playfair Display',serif;
+
+    opacity:0;
+    transform:translateY(-30px);
+
+    animation:entradaTitulo 1.2s ease forwards,
+              brilloTitulo 3s ease-in-out infinite 1.2s;
+}
+
+/* Animación de entrada */
+@keyframes entradaTitulo{
+    from{
+        opacity:0;
+        transform:translateY(-30px) scale(0.9);
+    }
+    to{
+        opacity:1;
+        transform:translateY(0) scale(1);
+    }
+}
+
+/* Efecto sutil de movimiento */
+@keyframes brilloTitulo{
+    0%{
+        transform:translateY(0px);
+    }
+    50%{
+        transform:translateY(-5px);
+    }
+    100%{
+        transform:translateY(0px);
+    }
+}
+
+.productos-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+    gap:35px;
+}
+
+.card-producto{
+    background:white;
+    border-radius:25px;
+    overflow:hidden;
+    box-shadow:0 10px 25px rgba(0,0,0,0.08);
+    transition:0.4s;
+    cursor:pointer;
+}
+
+.card-producto:hover{
+    transform:translateY(-10px);
+    box-shadow:0 20px 35px rgba(163,0,2,0.15);
+}
+
+.img-holder{
+    width:100%;
+    height:220px;
+    background:linear-gradient(135deg,var(--amarillo),#ffd46a);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:white;
+    font-size:1.3rem;
+    font-weight:700;
+}
+
+.card-producto h3{
+    padding:25px;
+    color:var(--rojo);
+    font-size:1.4rem;
+    font-weight:700;
+}
+
+
+.img-holder img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
+.card-link{
+text-decoration:none;
+color:inherit;
+display:block;
+}
