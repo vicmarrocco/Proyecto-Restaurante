@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Mostaza",
+    "slug": "mostaza-cliente",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "mostazacliente",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.anonymous.mostazacliente",
+      "adaptiveIcon": {
+        "backgroundColor": "#A30002",
+        "foregroundImage": "./assets/images/icon.png"
+      },
+      "usesCleartextTraffic": true
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#A30002",
+          "image": "./assets/images/icon.png",
+          "imageWidth": 80
+        }
+      ],
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

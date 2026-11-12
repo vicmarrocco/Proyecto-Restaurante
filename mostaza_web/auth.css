@@ -1,0 +1,153 @@
+:root{
+    --rojo:#A30002;
+    --amarillo:#FBB728;
+    --crema:#F5ECD2;
+}
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    background:var(--crema);
+    font-family:'Montserrat',sans-serif;
+}
+
+header{
+    padding:25px 8%;
+}
+
+.logo{
+    display:flex;
+    align-items:center;
+    gap:12px;
+}
+
+.logo img{
+    width:55px;
+}
+
+.logo span{
+    font-size:2rem;
+    font-weight:800;
+    color:var(--rojo);
+    font-family:'Playfair Display',serif;
+}
+
+.auth-container{
+    min-height:85vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    padding:40px;
+}
+
+.auth-box{
+    width:100%;
+    max-width:480px;
+    background:white;
+    padding:45px;
+    border-radius:30px;
+    box-shadow:0 15px 40px rgba(0,0,0,.08);
+    animation:entrada .8s ease;
+}
+
+.registro-box{
+    max-width:550px;
+}
+
+.auth-top{
+    text-align:center;
+    margin-bottom:35px;
+}
+
+.auth-top i{
+    font-size:3rem;
+    color:var(--rojo);
+    margin-bottom:20px;
+}
+
+.auth-top h2{
+    font-size:2.5rem;
+    color:var(--rojo);
+    font-family:'Playfair Display',serif;
+}
+
+.auth-top p{
+    color:#666;
+    margin-top:10px;
+}
+
+.input-group{
+    background:#fff;
+    border:2px solid #eee;
+    border-radius:18px;
+    padding:15px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-bottom:18px;
+    transition:.3s;
+}
+
+.input-group:focus-within{
+    border-color:var(--rojo);
+}
+
+.input-group i{
+    color:var(--rojo);
+}
+
+input{
+    border:none;
+    outline:none;
+    width:100%;
+    font-size:1rem;
+    font-family:'Montserrat',sans-serif;
+}
+
+button{
+    width:100%;
+    border:none;
+    background:var(--rojo);
+    color:white;
+    padding:16px;
+    border-radius:50px;
+    font-size:1rem;
+    font-weight:700;
+    cursor:pointer;
+    transition:.3s;
+}
+
+button:hover{
+    transform:translateY(-4px);
+}
+
+.auth-footer{
+    text-align:center;
+    margin-top:25px;
+}
+
+.auth-footer p{
+    color:#666;
+    margin-bottom:8px;
+}
+
+.auth-footer a{
+    text-decoration:none;
+    color:var(--rojo);
+    font-weight:700;
+}
+
+@keyframes entrada{
+    from{
+        opacity:0;
+        transform:translateY(30px);
+    }
+    to{
+        opacity:1;
+        transform:translateY(0);
+    }
+}
