@@ -6,6 +6,42 @@
 session_start();
 require('conexion.php');
 
+// Función de respaldo: registra el evento en la auditoría y actualiza el estado del pedido
+if (!function_exists('registrarAuditoriaPedido')) {
+    function registrarAuditoriaPedido($conn, $idpedido, $nuevoEstado, $accion, $rol, $nombre, $idEmpleado, $motivo = '') {
+        $idpedido = intval($idpedido);
+        if ($idpedido <= 0) return false;
+
+        $stmtP = $conn->prepare("SELECT estado FROM pedido_web WHERE idpedido = ?");
+        $stmtP->bind_param("i", $idpedido);
+        $stmtP->execute();
+        $p = $stmtP->get_result()->fetch_assoc();
+        $estadoAnterior = $p['estado'] ?? 'Recibido';
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+
+        // 1. Insertar evento en pedido_auditoria
+        $stmtAud = $conn->prepare("
+            INSERT INTO pedido_auditoria (idpedido, estado_anterior, estado_nuevo, accion, rol_responsable, idempleado, nombre_responsable, detalles, ip_origen)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        if ($stmtAud) {
+            $stmtAud->bind_param("issssisss", $idpedido, $estadoAnterior, $nuevoEstado, $accion, $rol, $idEmpleado, $nombre, $motivo, $ip);
+            $stmtAud->execute();
+        }
+
+        // 2. Actualizar estado (y datos de retiro) en pedido_web
+        $updates = ["`estado` = '" . $conn->real_escape_string($nuevoEstado) . "'"];
+        if (in_array($nuevoEstado, ['Retirado', 'Entregado'])) {
+            $updates[] = "`hora_entregado` = IFNULL(`hora_entregado`, NOW())";
+            if ($rol === 'Cajero' && !empty($nombre)) {
+                $updates[] = "`cajero_nombre` = '" . $conn->real_escape_string($nombre) . "'";
+            }
+        }
+        $conn->query("UPDATE pedido_web SET " . implode(', ', $updates) . " WHERE idpedido = $idpedido");
+        return true;
+    }
+}
+
 // Marcar pedido como Retirado del Lugar desde el Dashboard
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['marcar_retirado_dash'])) {
     $idPedDash = intval($_POST['idpedido'] ?? 0);
@@ -85,6 +121,7 @@ $ultimosPedidos = $conn->query("SELECT p.*, u.nombre, u.apellido FROM pedido_web
         <li><a href="caja.php"><i class="fa-solid fa-vault"></i> Control de Caja</a></li>
         <li><a href="inventario.php"><i class="fa-solid fa-boxes-stacked"></i> Inventario & Stock</a></li>
         <li><a href="reportes.php"><i class="fa-solid fa-file-invoice-dollar"></i> Reportes</a></li>
+        <li><a href="empleados.php"><i class="fa-solid fa-users"></i> Empleados</a></li>
         <li style="margin-top:20px;"><a href="../mostaza_web/" target="_blank"><i class="fa-solid fa-store"></i> Ir a la Tienda Web</a></li>
     </ul>
 

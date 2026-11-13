@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { MostazaColors as C } from '@/constants/Colors';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
+import LoginScreen from '@/components/LoginScreen';
 
 // Si algún componente falla al renderizar, se ve el error en pantalla en vez de quedar en blanco
 export { ErrorBoundary } from 'expo-router';
@@ -14,16 +15,10 @@ export { ErrorBoundary } from 'expo-router';
 export const unstable_settings = { initialRouteName: '(tabs)' };
 
 function RootStack() {
-  const { isLoading } = useAuth();
-  const [splashListo, setSplashListo] = useState(false);
+  const { isLoading, usuario } = useAuth();
 
-  // Tope a la pantalla de carga: si el servidor tarda, el layout igual se muestra
-  useEffect(() => {
-    const t = setTimeout(() => setSplashListo(true), 2500);
-    return () => clearTimeout(t);
-  }, []);
-
-  if (isLoading && !splashListo) {
+  // Mientras se verifica la sesión guardada
+  if (isLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.rojo }}>
         <Text style={{ fontSize: 54 }}>🍔</Text>
@@ -32,6 +27,17 @@ function RootStack() {
     );
   }
 
+  // Sin usuario: solo login / registro, a pantalla completa, sin tabs ni acceso al carrito
+  if (!usuario) {
+    return (
+      <>
+        <StatusBar style="light" />
+        <LoginScreen />
+      </>
+    );
+  }
+
+  // Con usuario: la app completa (tabs + checkout + detalle del pedido)
   return (
     <>
       <StatusBar style="light" />

@@ -6,6 +6,42 @@
 session_start();
 require('conexion.php');
 
+// Función de respaldo: registra el evento en la auditoría y actualiza el estado del pedido
+if (!function_exists('registrarAuditoriaPedido')) {
+    function registrarAuditoriaPedido($conn, $idpedido, $nuevoEstado, $accion, $rol, $nombre, $idEmpleado, $motivo = '') {
+        $idpedido = intval($idpedido);
+        if ($idpedido <= 0) return false;
+
+        $stmtP = $conn->prepare("SELECT estado FROM pedido_web WHERE idpedido = ?");
+        $stmtP->bind_param("i", $idpedido);
+        $stmtP->execute();
+        $p = $stmtP->get_result()->fetch_assoc();
+        $estadoAnterior = $p['estado'] ?? 'Recibido';
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+
+        // 1. Insertar evento en pedido_auditoria
+        $stmtAud = $conn->prepare("
+            INSERT INTO pedido_auditoria (idpedido, estado_anterior, estado_nuevo, accion, rol_responsable, idempleado, nombre_responsable, detalles, ip_origen)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        if ($stmtAud) {
+            $stmtAud->bind_param("issssisss", $idpedido, $estadoAnterior, $nuevoEstado, $accion, $rol, $idEmpleado, $nombre, $motivo, $ip);
+            $stmtAud->execute();
+        }
+
+        // 2. Actualizar estado (y datos de retiro) en pedido_web
+        $updates = ["`estado` = '" . $conn->real_escape_string($nuevoEstado) . "'"];
+        if (in_array($nuevoEstado, ['Retirado', 'Entregado'])) {
+            $updates[] = "`hora_entregado` = IFNULL(`hora_entregado`, NOW())";
+            if ($rol === 'Cajero' && !empty($nombre)) {
+                $updates[] = "`cajero_nombre` = '" . $conn->real_escape_string($nombre) . "'";
+            }
+        }
+        $conn->query("UPDATE pedido_web SET " . implode(', ', $updates) . " WHERE idpedido = $idpedido");
+        return true;
+    }
+}
+
 $mensajeOk = '';
 $mensajeErr = '';
 
@@ -31,12 +67,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['marcar_retirado_pos']
 
 // Procesar pedido rápido desde el POS
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crear_pedido_pos'])) {
+    $tipoSel = $_POST['tipo_entrega'] ?? '';
     $mesa = !empty($_POST['numero_mesa']) ? intval($_POST['numero_mesa']) : null;
+    if ($tipoSel === 'takeaway') {
+        $mesa = null; // Para llevar: nunca se asocia a una mesa
+    }
     $tipo = !empty($mesa) ? 'salon' : 'takeaway';
     $metodoPago = $_POST['metodo_pago'] ?? 'efectivo';
     $productosSeleccionados = $_POST['productos'] ?? [];
 
-    if (empty($productosSeleccionados)) {
+    if (!in_array($tipoSel, ['salon', 'takeaway'], true)) {
+        $mensajeErr = 'Primero elegí cómo se retira el pedido (en el salón o para llevar).';
+    } elseif ($tipoSel === 'salon' && empty($mesa)) {
+        $mensajeErr = 'Elegiste servicio en el salón: seleccioná la mesa en el mapa.';
+    } elseif (empty($productosSeleccionados)) {
         $mensajeErr = 'Debes agregar al menos un producto a la comanda.';
     } else {
         $subtotal = 0;
@@ -216,6 +260,56 @@ if ($pedidosTakeawayRes) {
     background: #FFFBEB !important;
     transform: scale(1.03);
 }
+
+/* ---- Flujo por pasos del cajero ---- */
+.paso-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--admin-rojo); color: #fff;
+    font-size: 0.85rem; font-weight: 900; margin-right: 8px;
+}
+.tipo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 700px) { .tipo-grid { grid-template-columns: 1fr; } }
+.tipo-card {
+    background: #FFFFFF; border: 2px solid #CBD5E1; border-radius: 14px;
+    padding: 24px 16px; text-align: center; cursor: pointer;
+    font-family: inherit; color: var(--admin-dark);
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    transition: all 0.2s;
+}
+.tipo-card i { font-size: 2rem; color: var(--admin-rojo); margin-bottom: 4px; }
+.tipo-card strong { font-size: 1.1rem; font-weight: 900; }
+.tipo-card span { font-size: 0.82rem; color: #64748B; font-weight: 600; }
+.tipo-card:hover { border-color: var(--admin-rojo); transform: translateY(-2px); }
+.tipo-card.active {
+    border-color: var(--admin-rojo); background: #FEF2F2;
+    box-shadow: 0 0 0 3px rgba(163, 0, 2, 0.15);
+}
+.resumen-retiro {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px;
+    padding: 12px 16px; margin-bottom: 20px; font-weight: 700; font-size: 0.9rem;
+}
+.resumen-retiro.ok { background: #F0FDF4; border-color: #BBF7D0; color: #166534; }
+.paso-titulo { font-size: 1.05rem; font-weight: 800; margin: 0 0 12px; color: var(--admin-dark); }
+.paso-bloqueado { opacity: 0.45; pointer-events: none; user-select: none; }
+.pago-opciones { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+@media (max-width: 700px) { .pago-opciones { grid-template-columns: 1fr; } }
+.pago-card {
+    display: flex; align-items: center; gap: 12px; cursor: pointer;
+    background: #FFFFFF; border: 2px solid #CBD5E1; border-radius: 12px;
+    padding: 14px 16px; font-weight: 800; font-size: 0.92rem; transition: all 0.2s;
+}
+.pago-card input { accent-color: var(--admin-rojo); width: 18px; height: 18px; }
+.pago-card i { font-size: 1.3rem; color: var(--admin-rojo); }
+.pago-card:has(input:checked) { border-color: var(--admin-rojo); background: #FEF2F2; box-shadow: 0 0 0 3px rgba(163, 0, 2, 0.12); }
+.total-pos-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    background: #0F172A; color: #fff; border-radius: 12px;
+    padding: 14px 20px; margin-bottom: 20px; font-weight: 800;
+}
+.total-pos-bar strong { font-size: 1.4rem; color: #FBB728; }
+#btnEnviarPOS:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 </head>
 <body class="admin-body">
@@ -239,6 +333,7 @@ if ($pedidosTakeawayRes) {
         <li><a href="caja.php"><i class="fa-solid fa-vault"></i> Control de Caja</a></li>
         <li><a href="inventario.php"><i class="fa-solid fa-boxes-stacked"></i> Inventario & Stock</a></li>
         <li><a href="reportes.php"><i class="fa-solid fa-file-invoice-dollar"></i> Reportes</a></li>
+        <li><a href="empleados.php"><i class="fa-solid fa-users"></i> Empleados</a></li>
         <li style="margin-top:20px;"><a href="../mostaza_web/" target="_blank"><i class="fa-solid fa-store"></i> Ir a la Tienda Web</a></li>
     </ul>
 
@@ -252,19 +347,41 @@ if ($pedidosTakeawayRes) {
     <div class="admin-topbar">
         <div>
             <h1>Punto de Venta (POS) & Servicio a Mesa</h1>
-            <p>Mapa táctil de mesas del salón por secciones, toma de comandas y facturación fiscal automática.</p>
+            <p>Primero elegí cómo se retira el pedido, después armá la comanda y seleccioná el método de pago.</p>
         </div>
     </div>
 
     <?php if ($mensajeOk): ?><div style="background:#DCFCE7;color:#166534;padding:14px;border-radius:10px;margin-bottom:20px;font-weight:700;border:1px solid #BBF7D0;"><?= $mensajeOk ?></div><?php endif; ?>
     <?php if ($mensajeErr): ?><div style="background:#FEE2E2;color:#991B1B;padding:14px;border-radius:10px;margin-bottom:20px;font-weight:700;border:1px solid #FECACA;"><?= $mensajeErr ?></div><?php endif; ?>
 
-    <!-- Mapa de Mesas por Secciones -->
-    <div class="admin-card">
+    <!-- PASO 1: ¿Cómo se retira el pedido? -->
+    <div class="admin-card" id="pasoRetiro">
         <div class="admin-card-header">
             <div>
-                <h2>Mapa Gráfico de Mesas Interactivo</h2>
-                <span style="font-size:0.85rem;color:#64748B;">Hacé clic en una mesa disponible para asignarla a la comanda</span>
+                <h2><span class="paso-num">1</span> ¿Cómo se retira el pedido?</h2>
+                <span style="font-size:0.85rem;color:#64748B;">Elegí una opción para empezar la comanda</span>
+            </div>
+        </div>
+
+        <div class="tipo-grid">
+            <button type="button" class="tipo-card" data-tipo="salon" onclick="elegirTipoPOS('salon')">
+                <i class="fa-solid fa-utensils"></i>
+                <strong>En el salón</strong>
+                <span>Consumo en mesa</span>
+            </button>
+            <button type="button" class="tipo-card" data-tipo="takeaway" onclick="elegirTipoPOS('takeaway')">
+                <i class="fa-solid fa-bag-shopping"></i>
+                <strong>Para llevar</strong>
+                <span>Take away / retiro en mostrador</span>
+            </button>
+        </div>
+
+        <!-- Mapa de Mesas (solo si eligió salón) -->
+        <div id="panelMesas" style="display:none;margin-top:24px;border-top:1px solid #E2E8F0;padding-top:20px;">
+        <div class="admin-card-header">
+            <div>
+                <h2>Elegí la mesa</h2>
+                <span style="font-size:0.85rem;color:#64748B;">Hacé clic en una mesa para asignarla a la comanda</span>
             </div>
             <div style="font-size:0.85rem;display:flex;gap:14px;">
                 <span style="color:#10B981;font-weight:700;"><i class="fa-solid fa-square"></i> Libre</span>
@@ -301,6 +418,107 @@ if ($pedidosTakeawayRes) {
             </div>
             <?php endforeach; ?>
         </div>
+        </div><!-- /panelMesas -->
+    </div>
+
+    <!-- Formulario de Toma de Comanda POS -->
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <h2>Comanda y cobro</h2>
+        </div>
+
+        <form method="post" action="pos.php" id="form-pos">
+            <input type="hidden" name="crear_pedido_pos" value="1">
+
+            <input type="hidden" name="tipo_entrega" id="inputTipoPOS" value="">
+            <input type="hidden" name="numero_mesa" id="selectMesaPOS" value="">
+
+            <div class="resumen-retiro" id="resumenRetiro">
+                <i class="fa-solid fa-circle-info"></i> Elegí en el paso 1 cómo se retira el pedido para continuar.
+            </div>
+
+            <div id="bloqueComanda" class="paso-bloqueado">
+
+            <!-- PASO 2: Armar el pedido -->
+            <h3 class="paso-titulo"><span class="paso-num">2</span> Armá el pedido</h3>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));gap:12px;max-height:350px;overflow-y:auto;padding-right:10px;margin-bottom:20px;">
+                <?php while ($p = $catalogo->fetch_assoc()): ?>
+                <div style="display:flex;align-items:center;justify-content:space-between;background:#FFFFFF;padding:12px 14px;border-radius:10px;border:1px solid #E2E8F0;box-shadow:0 1px 4px rgba(0,0,0,0.02);">
+                    <div>
+                        <strong style="font-size:0.9rem;color:var(--admin-dark);display:block;"><?= htmlspecialchars($p['nombre']) ?></strong>
+                        <span style="font-size:0.8rem;color:var(--admin-rojo);font-weight:800;">$<?= number_format($p['precio'], 0, ',', '.') ?></span>
+                    </div>
+                    <input type="number"
+                           class="input-prod-pos"
+                           data-id="<?= $p['idproducto'] ?>"
+                           data-nombre="<?= htmlspecialchars($p['nombre'], ENT_QUOTES) ?>"
+                           data-precio="<?= $p['precio'] ?>"
+                           name="productos[<?= $p['idproducto'] ?>]"
+                           value="0" min="0" max="20"
+                           onchange="recalcularTotalPOS()" oninput="recalcularTotalPOS()"
+                           style="width:60px;padding:6px;text-align:center;border-radius:6px;border:1px solid #CBD5E1;font-weight:700;">
+                </div>
+                <?php endwhile; ?>
+            </div>
+
+            <div class="total-pos-bar">
+                <span>Total de la comanda</span>
+                <strong id="lblTotalPOS">$0</strong>
+            </div>
+
+            <!-- PASO 3: Método de pago -->
+            <h3 class="paso-titulo"><span class="paso-num">3</span> Método de pago</h3>
+            <div class="pago-opciones">
+                <label class="pago-card">
+                    <input type="radio" name="metodo_pago" value="efectivo" checked onchange="togglePanelMPAdmin()">
+                    <i class="fa-solid fa-money-bill-wave"></i> Efectivo en Caja
+                </label>
+                <label class="pago-card">
+                    <input type="radio" name="metodo_pago" value="mercadopago" onchange="togglePanelMPAdmin()">
+                    <i class="fa-solid fa-qrcode"></i> Mercado Pago (QR / Checkout Pro)
+                </label>
+            </div>
+
+            <!-- Panel Pasarela Oficial Mercado Pago (Admin POS) -->
+            <div id="panelMPAdminPOS" style="display:none;background:#F0F9FF;border:2px solid #009EE3;border-radius:14px;padding:18px;margin-bottom:20px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+                    <div>
+                        <h3 style="margin:0;color:#0284C7;font-size:1.05rem;"><i class="fa-solid fa-qrcode"></i> Pasarela Oficial Mercado Pago · POS Salón</h3>
+                        <small style="color:#0C4A6E;">Total calculado: <strong id="lblTotalMPAdmin">$0</strong></small>
+                    </div>
+                    <button type="button" onclick="generarPreferenciaMPAdmin()" style="background:#009EE3;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:800;cursor:pointer;">
+                        <i class="fa-solid fa-rotate"></i> Generar Orden QR / Checkout Pro
+                    </button>
+                </div>
+
+                <div id="contenidoMPAdmin" style="display:none;grid-template-columns:200px 1fr;gap:18px;align-items:center;background:#fff;padding:14px;border-radius:10px;border:1px solid #BAE6FD;">
+                    <div style="text-align:center;">
+                        <img id="imgQrMPAdmin" src="" alt="QR Mercado Pago" style="width:170px;height:170px;border-radius:8px;border:1px solid #E2E8F0;">
+                    </div>
+                    <div>
+                        <div id="statusMPAdmin" style="background:#E0F2FE;color:#0369A1;padding:10px 12px;border-radius:8px;font-weight:800;font-size:0.9rem;margin-bottom:10px;">
+                            ⏳ Esperando pago del cliente en Mercado Pago...
+                        </div>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+                            <a id="btnLinkMPAdmin" href="#" target="_blank" style="background:#009EE3;color:#fff;text-decoration:none;padding:9px 14px;border-radius:8px;font-weight:800;font-size:0.85rem;">
+                                🌐 Abrir Checkout Pro
+                            </a>
+                            <button type="button" onclick="verificarPagoMPAdmin(true)" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;padding:9px 14px;border-radius:8px;font-weight:800;font-size:0.85rem;cursor:pointer;">
+                                🔍 Verificar Acreditación
+                            </button>
+                        </div>
+                        <div style="font-size:0.8rem;color:#475569;">
+                            <strong>Usuario Comprador de Prueba (Incógnito):</strong> <code>test_user_4298537724830968734@testuser.com</code> (Clave: <code>kqTMwlqBUK</code>) · Tarjeta: <code>5031 7557 3453 0604</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" id="btnEnviarPOS" disabled class="btn-admin btn-admin-red" style="width:100%;padding:14px;font-size:1.05rem;justify-content:center;">
+                <i class="fa-solid fa-paper-plane"></i> Facturar, Cobrar y Enviar a Cocina
+            </button>
+            </div><!-- /bloqueComanda -->
+        </form>
     </div>
 
     <!-- Pedidos para Retirar del Lugar (Take Away / Mostrador) -->
@@ -369,100 +587,6 @@ if ($pedidosTakeawayRes) {
         <?php endif; ?>
     </div>
 
-    <!-- Formulario de Toma de Comanda POS -->
-    <div class="admin-card">
-        <div class="admin-card-header">
-            <h2>Toma Rápida de Comanda POS & Factura</h2>
-        </div>
-
-        <form method="post" action="pos.php" id="form-pos">
-            <input type="hidden" name="crear_pedido_pos" value="1">
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
-                <div>
-                    <label class="form-label">Asignar a Mesa (Opcional si es Take-Away)</label>
-                    <select name="numero_mesa" id="selectMesaPOS" class="form-control">
-                        <option value="">Mostrador / Para Llevar (Take Away)</option>
-                        <?php foreach ($mesasLista as $mRow): ?>
-                            <option value="<?= $mRow['numero_mesa'] ?>">
-                                Mesa <?= $mRow['numero_mesa'] ?> · <?= htmlspecialchars($mRow['seccion_nombre']) ?> (<?= $mRow['capacidad'] ?> pers.) <?= isset($mesasOcupadas[$mRow['numero_mesa']]) ? '⚠️ [OCUPADA]' : '✓ [LIBRE]' ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div>
-                    <label class="form-label">Forma de Pago</label>
-                    <select name="metodo_pago" id="selectMetodoPagoPOS" class="form-control" onchange="togglePanelMPAdmin()">
-                        <option value="efectivo">💵 Efectivo en Caja</option>
-                        <option value="mercadopago">📱 Mercado Pago QR Salón / Checkout Pro</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Grilla de Productos Rápidos -->
-            <label class="form-label" style="margin-bottom:10px;">Seleccionar Productos para la Comanda</label>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));gap:12px;max-height:350px;overflow-y:auto;padding-right:10px;margin-bottom:20px;">
-                <?php while ($p = $catalogo->fetch_assoc()): ?>
-                <div style="display:flex;align-items:center;justify-content:space-between;background:#FFFFFF;padding:12px 14px;border-radius:10px;border:1px solid #E2E8F0;box-shadow:0 1px 4px rgba(0,0,0,0.02);">
-                    <div>
-                        <strong style="font-size:0.9rem;color:var(--admin-dark);display:block;"><?= htmlspecialchars($p['nombre']) ?></strong>
-                        <span style="font-size:0.8rem;color:var(--admin-rojo);font-weight:800;">$<?= number_format($p['precio'], 0, ',', '.') ?></span>
-                    </div>
-                    <input type="number"
-                           class="input-prod-pos"
-                           data-id="<?= $p['idproducto'] ?>"
-                           data-nombre="<?= htmlspecialchars($p['nombre'], ENT_QUOTES) ?>"
-                           data-precio="<?= $p['precio'] ?>"
-                           name="productos[<?= $p['idproducto'] ?>]"
-                           value="0" min="0" max="20"
-                           onchange="recalcularTotalPOS()"
-                           style="width:60px;padding:6px;text-align:center;border-radius:6px;border:1px solid #CBD5E1;font-weight:700;">
-                </div>
-                <?php endwhile; ?>
-            </div>
-
-            <!-- Panel Pasarela Oficial Mercado Pago (Admin POS) -->
-            <div id="panelMPAdminPOS" style="display:none;background:#F0F9FF;border:2px solid #009EE3;border-radius:14px;padding:18px;margin-bottom:20px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
-                    <div>
-                        <h3 style="margin:0;color:#0284C7;font-size:1.05rem;"><i class="fa-solid fa-qrcode"></i> Pasarela Oficial Mercado Pago · POS Salón</h3>
-                        <small style="color:#0C4A6E;">Total calculado: <strong id="lblTotalMPAdmin">$0</strong></small>
-                    </div>
-                    <button type="button" onclick="generarPreferenciaMPAdmin()" style="background:#009EE3;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:800;cursor:pointer;">
-                        <i class="fa-solid fa-rotate"></i> Generar Orden QR / Checkout Pro
-                    </button>
-                </div>
-
-                <div id="contenidoMPAdmin" style="display:none;grid-template-columns:200px 1fr;gap:18px;align-items:center;background:#fff;padding:14px;border-radius:10px;border:1px solid #BAE6FD;">
-                    <div style="text-align:center;">
-                        <img id="imgQrMPAdmin" src="" alt="QR Mercado Pago" style="width:170px;height:170px;border-radius:8px;border:1px solid #E2E8F0;">
-                    </div>
-                    <div>
-                        <div id="statusMPAdmin" style="background:#E0F2FE;color:#0369A1;padding:10px 12px;border-radius:8px;font-weight:800;font-size:0.9rem;margin-bottom:10px;">
-                            ⏳ Esperando pago del cliente en Mercado Pago...
-                        </div>
-                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-                            <a id="btnLinkMPAdmin" href="#" target="_blank" style="background:#009EE3;color:#fff;text-decoration:none;padding:9px 14px;border-radius:8px;font-weight:800;font-size:0.85rem;">
-                                🌐 Abrir Checkout Pro
-                            </a>
-                            <button type="button" onclick="verificarPagoMPAdmin(true)" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;padding:9px 14px;border-radius:8px;font-weight:800;font-size:0.85rem;cursor:pointer;">
-                                🔍 Verificar Acreditación
-                            </button>
-                        </div>
-                        <div style="font-size:0.8rem;color:#475569;">
-                            <strong>Usuario Comprador de Prueba (Incógnito):</strong> <code>test_user_4298537724830968734@testuser.com</code> (Clave: <code>kqTMwlqBUK</code>) · Tarjeta: <code>5031 7557 3453 0604</code>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <button type="submit" class="btn-admin btn-admin-red" style="width:100%;padding:14px;font-size:1.05rem;justify-content:center;">
-                <i class="fa-solid fa-paper-plane"></i> Facturar, Cobrar y Enviar a Cocina
-            </button>
-        </form>
-    </div>
-
 </main>
 
 <script>
@@ -495,13 +619,20 @@ function recalcularTotalPOS() {
     mpTotalAdmin = total;
     const lbl = document.getElementById('lblTotalMPAdmin');
     if (lbl) lbl.textContent = '$' + total.toLocaleString('es-AR');
+    const lblPos = document.getElementById('lblTotalPOS');
+    if (lblPos) lblPos.textContent = '$' + total.toLocaleString('es-AR');
+    actualizarEstadoPOS();
+}
+
+function getMetodoPagoPOS() {
+    const r = document.querySelector('input[name="metodo_pago"]:checked');
+    return r ? r.value : 'efectivo';
 }
 
 function togglePanelMPAdmin() {
-    const sel = document.getElementById('selectMetodoPagoPOS');
     const panel = document.getElementById('panelMPAdminPOS');
     recalcularTotalPOS();
-    if (sel && sel.value === 'mercadopago') {
+    if (getMetodoPagoPOS() === 'mercadopago') {
         panel.style.display = 'block';
         if (mpTotalAdmin > 0) generarPreferenciaMPAdmin();
     } else {
@@ -579,14 +710,62 @@ function filtrarSeccion(secId, btn) {
     });
 }
 
+let tipoPOS = '';
+
+function elegirTipoPOS(tipo) {
+    tipoPOS = tipo;
+    document.getElementById('inputTipoPOS').value = tipo;
+    document.getElementById('selectMesaPOS').value = '';
+    document.querySelectorAll('.pos-table-btn').forEach(b => b.classList.remove('selected-table'));
+    document.querySelectorAll('.tipo-card').forEach(c => c.classList.toggle('active', c.dataset.tipo === tipo));
+    document.getElementById('panelMesas').style.display = (tipo === 'salon') ? 'block' : 'none';
+    actualizarEstadoPOS();
+    if (tipo === 'takeaway') {
+        document.getElementById('form-pos').scrollIntoView({ behavior: 'smooth' });
+    }
+}
+
 function seleccionarMesaPOS(numero, ocupada) {
+    if (tipoPOS !== 'salon') return;
     document.querySelectorAll('.pos-table-btn').forEach(b => b.classList.remove('selected-table'));
     const btn = document.getElementById('btn-mesa-' + numero);
     if (btn) btn.classList.add('selected-table');
 
     document.getElementById('selectMesaPOS').value = numero;
+    window.mesaOcupadaPOS = !!ocupada;
+    actualizarEstadoPOS();
     document.getElementById('form-pos').scrollIntoView({ behavior: 'smooth' });
 }
+
+function actualizarEstadoPOS() {
+    const mesa = document.getElementById('selectMesaPOS').value;
+    const retiroListo = (tipoPOS === 'takeaway') || (tipoPOS === 'salon' && mesa !== '');
+    const bloque = document.getElementById('bloqueComanda');
+    const resumen = document.getElementById('resumenRetiro');
+
+    bloque.classList.toggle('paso-bloqueado', !retiroListo);
+    bloque.inert = !retiroListo;
+
+    if (tipoPOS === 'takeaway') {
+        resumen.className = 'resumen-retiro ok';
+        resumen.innerHTML = '<i class="fa-solid fa-bag-shopping"></i> Retiro: Para llevar (mostrador)';
+    } else if (tipoPOS === 'salon' && mesa !== '') {
+        resumen.className = 'resumen-retiro ok';
+        resumen.innerHTML = '<i class="fa-solid fa-utensils"></i> Retiro: En el salón · Mesa ' + mesa +
+            (window.mesaOcupadaPOS ? ' <span class="badge badge-warning">mesa con pedido abierto</span>' : '');
+    } else if (tipoPOS === 'salon') {
+        resumen.className = 'resumen-retiro';
+        resumen.innerHTML = '<i class="fa-solid fa-hand-pointer"></i> Elegí la mesa en el mapa para continuar.';
+    } else {
+        resumen.className = 'resumen-retiro';
+        resumen.innerHTML = '<i class="fa-solid fa-circle-info"></i> Elegí en el paso 1 cómo se retira el pedido para continuar.';
+    }
+
+    const { total } = obtenerItemsPOSAdmin();
+    document.getElementById('btnEnviarPOS').disabled = !(retiroListo && total > 0);
+}
+
+actualizarEstadoPOS();
 </script>
 
 </body>

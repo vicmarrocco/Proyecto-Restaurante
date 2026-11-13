@@ -107,12 +107,12 @@ $modoKds = isset($_GET['fullscreen']) || isset($_GET['kds_puro']);
 $cocineroLogueado = !empty($_SESSION['cocinero_nombre']);
 $nombreCocinero = $_SESSION['cocinero_nombre'] ?? 'Administración / Cocina Central';
 
-// Consultar comandas activas
+// Consultar comandas activas (solo pendientes y en preparación: al marcarse como listas salen del KDS)
 $comandas = $conn->query(
     "SELECT p.*, u.nombre, u.apellido 
      FROM pedido_web p 
      LEFT JOIN usuario_web u ON p.idusuario = u.idusuario 
-     WHERE p.estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'En Preparación', 'Listo para Despacho') 
+     WHERE p.estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'En Preparación') 
      ORDER BY p.idpedido ASC"
 );
 
@@ -211,6 +211,42 @@ body.kds-body {
     font-size: 0.82rem;
     text-transform: uppercase;
 }
+
+/* ---- Layout general ---- */
+body.kds-fullscreen .admin-main { margin-left: 0; max-width: 100%; width: 100%; padding: 0; }
+.admin-main { min-width: 0; }
+
+/* ---- Nav lateral ---- */
+.sidebar-nav a { white-space: nowrap; }
+
+/* ---- Topbar: marca | pestañas | acciones ---- */
+.kds-topbar { gap: 16px 24px; flex-wrap: wrap; }
+.kds-brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.kds-nav-tabs { flex: 1; justify-content: center; flex-wrap: wrap; }
+.kds-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.kds-tab-btn { white-space: nowrap; font-family: inherit; line-height: 1.2; }
+@media (max-width: 1200px) {
+    .kds-brand { flex: 1 1 100%; }
+    .kds-nav-tabs { flex: 1 1 auto; justify-content: flex-start; }
+}
+
+/* ---- Banner de sincronización ---- */
+.kds-banner {
+    background: #FFFBEB; border: 1.5px solid #FDE68A; border-radius: 14px;
+    padding: 14px 20px; margin-bottom: 22px;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 16px; flex-wrap: wrap;
+}
+
+/* ---- Comandas una al lado de la otra ---- */
+.kds-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    align-items: stretch;
+    width: 100%;
+}
+.kds-ticket { min-width: 0; }
 </style>
 </head>
 <body class="admin-body <?= $modoKds ? 'kds-fullscreen' : '' ?>">
@@ -236,6 +272,7 @@ body.kds-body {
         <li><a href="caja.php"><i class="fa-solid fa-vault"></i> Control de Caja</a></li>
         <li><a href="inventario.php"><i class="fa-solid fa-boxes-stacked"></i> Inventario & Stock</a></li>
         <li><a href="reportes.php"><i class="fa-solid fa-file-invoice-dollar"></i> Reportes</a></li>
+        <li><a href="empleados.php"><i class="fa-solid fa-users"></i> Empleados</a></li>
         <li style="margin-top:20px;"><a href="../mostaza_web/" target="_blank"><i class="fa-solid fa-store"></i> Ir a la Tienda Web</a></li>
     </ul>
 
@@ -249,7 +286,7 @@ body.kds-body {
 
 <!-- TOPBAR COCINA -->
 <div class="kds-topbar" style="<?= $modoKds ? 'background:#1E293B;border-bottom-color:#334155;color:#fff;' : '' ?>">
-    <div style="display:flex;align-items:center;gap:14px;">
+    <div class="kds-brand">
         <img src="img/logo.png" alt="Mostaza" style="width:36px;height:36px;object-fit:contain;">
         <div>
             <h1 style="font-size:1.2rem;font-weight:900;color:<?= $modoKds ? '#FBB728' : 'var(--admin-rojo, #A30002)' ?>;margin:0;letter-spacing:0.5px;">
@@ -272,7 +309,7 @@ body.kds-body {
     </div>
 
     <!-- Botones de Utilidad -->
-    <div style="display:flex;gap:8px;align-items:center;">
+    <div class="kds-actions">
         <?php if ($modoKds): ?>
             <a href="cocina.php?tab=<?= $tabActiva ?>" class="kds-tab-btn" title="Volver al panel admin normal">
                 <i class="fa-solid fa-compress"></i> Salir Pantalla Completa
@@ -302,7 +339,7 @@ body.kds-body {
 <div style="padding: <?= $modoKds ? '20px' : '24px' ?>;">
 
     <!-- Banner Sincronización con App Móvil Expo -->
-    <div style="background:#FFFBEB;border:1.5px solid #FDE68A;border-radius:14px;padding:14px 20px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:center;gap:16px;">
+    <div class="kds-banner">
         <div style="display:flex;align-items:center;gap:14px;">
             <span style="font-size:2rem;">📱</span>
             <div>
@@ -317,6 +354,8 @@ body.kds-body {
                 <i class="fa-solid fa-circle" style="font-size:0.5rem;"></i> Sincronizado en Vivo
             </span>
         </div>
+    </div>
+
     <!-- TAB 1: COMANDAS ACTIVAS -->
     <?php if ($tabActiva === 'pedidos'): ?>
         

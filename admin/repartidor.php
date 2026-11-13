@@ -117,6 +117,7 @@ if ($resFlota) {
         <li><a href="caja.php"><i class="fa-solid fa-vault"></i> Control de Caja</a></li>
         <li><a href="inventario.php"><i class="fa-solid fa-boxes-stacked"></i> Inventario & Stock</a></li>
         <li><a href="reportes.php"><i class="fa-solid fa-file-invoice-dollar"></i> Reportes</a></li>
+        <li><a href="empleados.php"><i class="fa-solid fa-users"></i> Empleados</a></li>
         <li style="margin-top:20px;"><a href="../mostaza_web/" target="_blank"><i class="fa-solid fa-store"></i> Ir a la Tienda Web</a></li>
     </ul>
 
