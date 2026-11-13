@@ -1,5 +1,6 @@
 import sys
 import tkinter as tk
+import theme  # debe ir primero: aplica la paleta antes de cargar las ventanas
 from login_window import LoginWindow
 from pos_window import POSWindow
 
@@ -7,6 +8,7 @@ class MostazaPOSApp:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Mostaza POS · Terminal de Cajero")
+        theme.apply_branding(self.root)
         self.cajero_info = None
 
         self.mostrar_login()

@@ -101,6 +101,7 @@ if ($idRol === 3) {
         SELECT 
             COUNT(idpedido) as total_atenciones,
             IFNULL(SUM(total), 0) as total_facturado,
+            IFNULL(SUM(CASE WHEN LOWER(metodo_pago) = 'efectivo' THEN total ELSE 0 END), 0) as efectivo_recaudado,
             IFNULL(AVG(duracion_total_minutos), 0) as promedio_atencion
         FROM pedido_web 
         WHERE (idempleado_mesero = ? OR idempleado = ?) AND DATE(fecha) = CURDATE()
@@ -111,6 +112,7 @@ if ($idRol === 3) {
 
     $atencionesCount = intval($rMes['total_atenciones'] ?? 0);
     $totalFacturado = floatval($rMes['total_facturado'] ?? 0);
+    $efectivo = floatval($rMes['efectivo_recaudado'] ?? 0);
     $promAtencion = round(floatval($rMes['promedio_atencion'] ?? 0), 1);
 
     $metricas = [
@@ -118,6 +120,8 @@ if ($idRol === 3) {
         'mesas_atendidas' => $atencionesCount,
         'total_recaudado' => $totalFacturado,
         'total_recaudado_formateado' => '$' . number_format($totalFacturado, 0, ',', '.'),
+        'efectivo_a_rendir' => $efectivo,
+        'efectivo_a_rendir_formateado' => '$' . number_format($efectivo, 0, ',', '.'),
         'ticket_promedio' => $atencionesCount > 0 ? '$' . number_format($totalFacturado / $atencionesCount, 0, ',', '.') : '$0',
         'tiempo_promedio_servicio' => $promAtencion > 0 ? "{$promAtencion} min" : 'En curso'
     ];
@@ -130,9 +134,11 @@ if ($idRol === 3) {
             IFNULL(SUM(CASE WHEN metodo_pago = 'efectivo' THEN total ELSE 0 END), 0) as efectivo_recaudado,
             IFNULL(AVG(duracion_entrega_minutos), 0) as promedio_viaje
         FROM pedido_web 
-        WHERE idempleado_repartidor = ? AND estado = 'Entregado' AND DATE(fecha) = CURDATE()
+        WHERE (idempleado_repartidor = ? OR repartidor_asignado = (SELECT CONCAT(nombre, ' ', apellido) FROM empleado WHERE idempleado = ?)) 
+          AND estado = 'Entregado' 
+          AND (DATE(fecha) = CURDATE() OR DATE(hora_entregado) = CURDATE() OR hora_entregado >= DATE_SUB(NOW(), INTERVAL 24 HOUR) OR fecha >= DATE_SUB(NOW(), INTERVAL 24 HOUR))
     ");
-    $stmtRep->bind_param("i", $idempleado);
+    $stmtRep->bind_param("ii", $idempleado, $idempleado);
     $stmtRep->execute();
     $rRep = $stmtRep->get_result()->fetch_assoc();
 

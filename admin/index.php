@@ -6,6 +6,63 @@
 session_start();
 require('conexion.php');
 
+// Función de respaldo: registra el evento en la auditoría y actualiza el estado del pedido
+if (!function_exists('registrarAuditoriaPedido')) {
+    function registrarAuditoriaPedido($conn, $idpedido, $nuevoEstado, $accion, $rol, $nombre, $idEmpleado, $motivo = '') {
+        $idpedido = intval($idpedido);
+        if ($idpedido <= 0) return false;
+
+        $stmtP = $conn->prepare("SELECT estado FROM pedido_web WHERE idpedido = ?");
+        $stmtP->bind_param("i", $idpedido);
+        $stmtP->execute();
+        $p = $stmtP->get_result()->fetch_assoc();
+        $estadoAnterior = $p['estado'] ?? 'Recibido';
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+
+        // 1. Insertar evento en pedido_auditoria
+        $stmtAud = $conn->prepare("
+            INSERT INTO pedido_auditoria (idpedido, estado_anterior, estado_nuevo, accion, rol_responsable, idempleado, nombre_responsable, detalles, ip_origen)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        if ($stmtAud) {
+            $stmtAud->bind_param("issssisss", $idpedido, $estadoAnterior, $nuevoEstado, $accion, $rol, $idEmpleado, $nombre, $motivo, $ip);
+            $stmtAud->execute();
+        }
+
+        // 2. Actualizar estado (y datos de retiro) en pedido_web
+        $updates = ["`estado` = '" . $conn->real_escape_string($nuevoEstado) . "'"];
+        if (in_array($nuevoEstado, ['Retirado', 'Entregado'])) {
+            $updates[] = "`hora_entregado` = IFNULL(`hora_entregado`, NOW())";
+            if ($rol === 'Cajero' && !empty($nombre)) {
+                $updates[] = "`cajero_nombre` = '" . $conn->real_escape_string($nombre) . "'";
+            }
+        }
+        $conn->query("UPDATE pedido_web SET " . implode(', ', $updates) . " WHERE idpedido = $idpedido");
+        return true;
+    }
+}
+
+// Marcar pedido como Retirado del Lugar desde el Dashboard
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['marcar_retirado_dash'])) {
+    $idPedDash = intval($_POST['idpedido'] ?? 0);
+    if ($idPedDash > 0) {
+        $cajeroNom = $_SESSION['cajero_nombre'] ?? ($_SESSION['admin_nombre'] ?? 'Cajero Central');
+        $cajeroId = $_SESSION['cajero_id'] ?? null;
+        registrarAuditoriaPedido(
+            $conn,
+            $idPedDash,
+            'Retirado',
+            'Pedido Retirado del Lugar',
+            'Cajero',
+            $cajeroNom,
+            $cajeroId,
+            'Pedido retirado del lugar en mostrador'
+        );
+    }
+    header("Location: index.php");
+    exit();
+}
+
 // Métricas en tiempo real
 $hoy = date('Y-m-d');
 $stmtVentasHoy = $conn->query("SELECT IFNULL(SUM(total), 0) as total, COUNT(*) as cant FROM pedido_web WHERE DATE(fecha) = '$hoy'");
@@ -64,6 +121,7 @@ $ultimosPedidos = $conn->query("SELECT p.*, u.nombre, u.apellido FROM pedido_web
         <li><a href="caja.php"><i class="fa-solid fa-vault"></i> Control de Caja</a></li>
         <li><a href="inventario.php"><i class="fa-solid fa-boxes-stacked"></i> Inventario & Stock</a></li>
         <li><a href="reportes.php"><i class="fa-solid fa-file-invoice-dollar"></i> Reportes</a></li>
+        <li><a href="empleados.php"><i class="fa-solid fa-users"></i> Empleados</a></li>
         <li style="margin-top:20px;"><a href="../mostaza_web/" target="_blank"><i class="fa-solid fa-store"></i> Ir a la Tienda Web</a></li>
     </ul>
 
@@ -150,6 +208,10 @@ $ultimosPedidos = $conn->query("SELECT p.*, u.nombre, u.apellido FROM pedido_web
                     <span><i class="fa-solid fa-cash-register"></i> POS Salón & Mesas</span>
                     <i class="fa-solid fa-arrow-right"></i>
                 </a>
+                <a href="mesero.php?panel=sectores" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#FEF2F2;color:#991B1B;text-decoration:none;border-radius:10px;font-weight:700;border:1px solid #FECACA;">
+                    <span><i class="fa-solid fa-users-gear"></i> Asignar Sectores a Meseros</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </a>
                 <a href="caja.php" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#EFF6FF;color:#1E40AF;text-decoration:none;border-radius:10px;font-weight:700;border:1px solid #BFDBFE;">
                     <span><i class="fa-solid fa-vault"></i> Arqueo de Caja</span>
                     <i class="fa-solid fa-arrow-right"></i>
@@ -189,7 +251,7 @@ $ultimosPedidos = $conn->query("SELECT p.*, u.nombre, u.apellido FROM pedido_web
                     $bClass = 'badge-info';
                     if ($p['estado'] === 'En Cocina' || $p['estado'] === 'En Preparacion') $bClass = 'badge-warning';
                     if ($p['estado'] === 'Listo' || $p['estado'] === 'En Camino') $bClass = 'badge-success';
-                    if ($p['estado'] === 'Entregado') $bClass = 'badge-muted';
+                    if ($p['estado'] === 'Entregado' || $p['estado'] === 'Retirado') $bClass = 'badge-muted';
                     ?>
                     <tr>
                         <td><strong>#<?= $p['idpedido'] ?></strong></td>
@@ -200,7 +262,16 @@ $ultimosPedidos = $conn->query("SELECT p.*, u.nombre, u.apellido FROM pedido_web
                         <td><strong style="color:var(--admin-rojo);font-size:0.95rem;">$<?= number_format($p['total'], 0, ',', '.') ?></strong></td>
                         <td><span class="badge <?= $bClass ?>"><?= htmlspecialchars($p['estado']) ?></span></td>
                         <td>
-                            <div style="display:flex;gap:6px;">
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                                <?php if ($p['tipo_entrega'] === 'takeaway' && !in_array($p['estado'], ['Entregado', 'Retirado', 'Cancelado'])): ?>
+                                <form method="post" action="index.php" style="display:inline;" onsubmit="return confirm('¿Confirmar que el pedido #<?= $p['idpedido'] ?> fue retirado del lugar?');">
+                                    <input type="hidden" name="marcar_retirado_dash" value="1">
+                                    <input type="hidden" name="idpedido" value="<?= $p['idpedido'] ?>">
+                                    <button type="submit" class="btn-admin btn-admin-sm" style="background:#10B981;color:#FFF;border:none;cursor:pointer;">
+                                        <i class="fa-solid fa-bag-shopping"></i> Retirado
+                                    </button>
+                                </form>
+                                <?php endif; ?>
                                 <a href="ticket_pdf.php?id=<?= $p['idpedido'] ?>" target="_blank" class="btn-admin btn-admin-white btn-admin-sm">
                                     <i class="fa-solid fa-print"></i> Ticket
                                 </a>

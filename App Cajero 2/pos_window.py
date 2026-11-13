@@ -4,11 +4,13 @@ Punto de Venta Profesional para Mostaza con Facturación Fiscal y Mesas Interact
 """
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
+import os
 import time
 import datetime
 import threading
 import random
 import webbrowser
+from PIL import Image, ImageTk
 from config import *
 from api_client import api
 
@@ -53,6 +55,7 @@ class POSWindow:
         self.caja_info = {}
         self.mesas_datos = []
         self.secciones_datos = []
+        self._img_cache = {}
 
         self._build_layout()
         self._start_clock()
@@ -308,7 +311,7 @@ class POSWindow:
 
         self.btn_mode_take = tk.Button(
             mode_btns, text="🛍 Mostrador (Take Away)", font=(FONT_FAMILY, 9, "bold"),
-            bg=COLOR_DARK, fg=COLOR_WHITE, relief="flat", cursor="hand2",
+            bg=COLOR_ROJO, fg=COLOR_WHITE, relief="flat", cursor="hand2",
             pady=6, command=lambda: self._cambiar_modalidad("takeaway")
         )
         self.btn_mode_take.pack(side="left", fill="x", expand=True, padx=2)
@@ -484,6 +487,47 @@ class POSWindow:
         self._render_categorias()
         self._render_productos()
 
+    def _obtener_imagen_producto(self, nombre_archivo, size=(120, 85)):
+        if not nombre_archivo:
+            return None
+        cache_key = f"{nombre_archivo}_{size[0]}x{size[1]}"
+        if cache_key in self._img_cache:
+            return self._img_cache[cache_key]
+
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        rutas_posibles = [
+            os.path.join(base_dir, "..", "mostaza_web", "img", nombre_archivo),
+            os.path.join(base_dir, "img", nombre_archivo),
+            os.path.join(base_dir, "..", "admin", "img", nombre_archivo)
+        ]
+        
+        img_path = None
+        for r in rutas_posibles:
+            if os.path.exists(r):
+                img_path = r
+                break
+
+        try:
+            if img_path:
+                im = Image.open(img_path)
+            else:
+                import urllib.request
+                import io
+                url_base = API_BASE_URL.replace("/api", "") + "/img/" + nombre_archivo
+                req = urllib.request.Request(url_base, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    im = Image.open(io.BytesIO(resp.read()))
+
+            resample_mode = getattr(Image, 'Resampling', None)
+            resample = resample_mode.LANCZOS if resample_mode else getattr(Image, 'ANTIALIAS', Image.BICUBIC)
+            im = im.convert("RGBA") if im.mode in ('RGBA', 'LA') else im.convert("RGB")
+            im = im.resize(size, resample)
+            tk_img = ImageTk.PhotoImage(im)
+            self._img_cache[cache_key] = tk_img
+            return tk_img
+        except Exception:
+            return None
+
     def _render_productos(self):
         for w in self.grid_prod.winfo_children():
             w.destroy()
@@ -514,8 +558,18 @@ class POSWindow:
             r = idx // cols
             c = idx % cols
 
-            card = tk.Frame(self.grid_prod, bg="#FFFFFF", relief="solid", bd=1, padx=8, pady=8, cursor="hand2")
+            card = tk.Frame(self.grid_prod, bg="#FFFFFF", relief="solid", bd=1, padx=6, pady=6, cursor="hand2")
             card.grid(row=r, column=c, padx=5, pady=5, sticky="nsew")
+
+            widgets_click = [card]
+
+            # Imagen del producto
+            img_tk = self._obtener_imagen_producto(prod.get("imagen"))
+            if img_tk:
+                lbl_img = tk.Label(card, image=img_tk, bg="#FFFFFF", cursor="hand2")
+                lbl_img.image = img_tk
+                lbl_img.pack(pady=(2, 4))
+                widgets_click.append(lbl_img)
 
             lbl_pname = tk.Label(
                 card,
@@ -523,10 +577,11 @@ class POSWindow:
                 font=(FONT_FAMILY, 9, "bold"),
                 fg=COLOR_TEXT,
                 bg="#FFFFFF",
-                wraplength=190,
+                wraplength=180,
                 justify="center"
             )
-            lbl_pname.pack(fill="x", pady=(0, 4))
+            lbl_pname.pack(fill="x", pady=(0, 3))
+            widgets_click.append(lbl_pname)
 
             lbl_price = tk.Label(
                 card,
@@ -536,8 +591,9 @@ class POSWindow:
                 bg="#FFFFFF"
             )
             lbl_price.pack()
+            widgets_click.append(lbl_price)
 
-            for widget in [card, lbl_pname, lbl_price]:
+            for widget in widgets_click:
                 widget.bind("<Button-1>", lambda e, p=prod: self._agregar_a_comanda(p))
 
         for c_idx in range(6):
@@ -684,9 +740,9 @@ class POSWindow:
         self.frame_mesa.pack_forget()
 
         if modo == "takeaway":
-            self.btn_mode_take.config(bg=COLOR_DARK, fg=COLOR_WHITE)
+            self.btn_mode_take.config(bg=COLOR_ROJO, fg=COLOR_WHITE)
         elif modo == "salon":
-            self.btn_mode_salon.config(bg=COLOR_DARK, fg=COLOR_WHITE)
+            self.btn_mode_salon.config(bg=COLOR_ROJO, fg=COLOR_WHITE)
             self.frame_mesa.pack(fill="x", pady=(6, 0))
             self._actualizar_texto_mesa_boton()
 
@@ -844,6 +900,29 @@ class POSWindow:
 
         metodo_var = tk.StringVar(value="efectivo")
 
+        btn_pay_cash = tk.Button(
+            pay_tabs, text="💵 Efectivo", font=(FONT_FAMILY, 10, "bold"),
+            relief="flat", cursor="hand2", pady=8,
+            command=lambda: set_metodo("efectivo")
+        )
+        btn_pay_cash.pack(side="left", fill="x", expand=True, padx=3)
+
+        btn_pay_mp = tk.Button(
+            pay_tabs, text="📱 Mercado Pago", font=(FONT_FAMILY, 10, "bold"),
+            relief="flat", cursor="hand2", pady=8,
+            command=lambda: set_metodo("mercadopago")
+        )
+        btn_pay_mp.pack(side="left", fill="x", expand=True, padx=3)
+
+        def _actualizar_estilo_pestanas():
+            m = metodo_var.get()
+            if m == "efectivo":
+                btn_pay_cash.config(bg="#15803D", fg="#FFFFFF", relief="flat", activebackground="#166534", activeforeground="#FFFFFF")
+                btn_pay_mp.config(bg="#F1F5F9", fg="#475569", relief="solid", bd=1, activebackground="#E2E8F0", activeforeground="#0F172A")
+            else:
+                btn_pay_cash.config(bg="#F1F5F9", fg="#475569", relief="solid", bd=1, activebackground="#E2E8F0", activeforeground="#0F172A")
+                btn_pay_mp.config(bg="#009EE3", fg="#FFFFFF", relief="flat", activebackground="#0080B8", activeforeground="#FFFFFF")
+
         def set_metodo(m):
             metodo_var.set(m)
             f_efectivo.pack_forget()
@@ -854,15 +933,9 @@ class POSWindow:
             elif m == "tarjeta": f_tarjeta.pack(fill="both", expand=True, padx=20)
             elif m == "mercadopago": f_mp.pack(fill="both", expand=True, padx=20)
             elif m == "transferencia": f_transf.pack(fill="both", expand=True, padx=20)
+            _actualizar_estilo_pestanas()
 
-        for m_slug, m_name in [("efectivo", "💵 Efectivo"), ("mercadopago", "📱 Mercado Pago")]:
-            rb = tk.Radiobutton(
-                pay_tabs, text=m_name, variable=metodo_var, value=m_slug,
-                font=(FONT_FAMILY, 9, "bold"), indicatoron=0, bg="#F1F5F9",
-                selectcolor=COLOR_DARK, fg=COLOR_TEXT, relief="flat",
-                command=lambda s=m_slug: set_metodo(s)
-            )
-            rb.pack(side="left", fill="x", expand=True, padx=2, ipady=6)
+        _actualizar_estilo_pestanas()
 
         # 1. Contenedor Efectivo
         f_efectivo = tk.Frame(modal, bg=COLOR_WHITE)
@@ -1338,66 +1411,77 @@ class POSWindow:
         paper = tk.Frame(t_win, bg="#FFFFFF", padx=15, pady=15)
         paper.pack(fill="both", expand=True, padx=12, pady=12)
 
-        cae_num = data.get("cae", "74123456789012")
-        cae_vto = data.get("cae_vto", datetime.datetime.now().strftime("%d/%m/%Y"))
+        try:
+            cae_num = data.get("cae", "74123456789012")
+            cae_vto = data.get("cae_vto", datetime.datetime.now().strftime("%d/%m/%Y"))
 
-        pago_det = data.get('metodo_pago', '').upper()
-        if data.get("mp_payment_id"):
-            pago_det += f" (Op #{data.get('mp_payment_id')})"
-        elif data.get("tarjeta_auth_code"):
-            cuotas_txt = f" {data.get('tarjeta_cuotas')}C" if data.get('tarjeta_cuotas', 1) > 1 else ""
-            pago_det += f"{cuotas_txt} (Auth #{data.get('tarjeta_auth_code')})"
-        elif data.get("comprobante_transferencia"):
-            pago_det += f" (Comp #{data.get('comprobante_transferencia')})"
+            pago_det = str(data.get('metodo_pago', '')).upper()
+            if data.get("mp_payment_id"):
+                pago_det += f" (Op #{data.get('mp_payment_id')})"
+            elif data.get("tarjeta_auth_code"):
+                cuotas_txt = f" {data.get('tarjeta_cuotas')}C" if data.get('tarjeta_cuotas', 1) > 1 else ""
+                pago_det += f"{cuotas_txt} (Auth #{data.get('tarjeta_auth_code')})"
+            elif data.get("comprobante_transferencia"):
+                pago_det += f" (Comp #{data.get('comprobante_transferencia')})"
 
-        ticket_text = f"""
-========================================
+            ticket_text = f"""========================================
              MOSTAZA SA
   EPET Nº 7 · Sistema Fiscal POS
  CUIT: 30-71234567-9 · IVA Resp. Inscripto
 ========================================
 FACTURA B: {num_fac}
-Fecha: {data.get('fecha')}
+Fecha: {data.get('fecha', datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'))}
 Cajero: {data.get('cajero', self.cajero_info.get('nombre_completo', 'Operador'))}
 Cliente: {data.get('cliente', 'Consumidor Final')}
-Modalidad: {data.get('tipo_entrega', '').upper()} {f"(Mesa {data.get('numero_mesa')})" if data.get('numero_mesa') else ''}
+Modalidad: {str(data.get('tipo_entrega', '')).upper()} {f"(Mesa {data.get('numero_mesa')})" if data.get('numero_mesa') else ''}
 Pago: {pago_det}
 ----------------------------------------
 """
-        for it in data.get("items", []):
-            cant = it.get('cantidad', 1)
-            desc = it.get('descripcion', '')[:18]
-            subt = int(it.get('subtotal', 0))
-            ticket_text += f"{cant}x {desc:<18} ${subt:>7}\n"
-            if it.get("modificadores"):
-                ticket_text += f"   ↳ {it['modificadores']}\n"
+            for it in data.get("items", []):
+                cant = it.get('cantidad', 1)
+                desc = str(it.get('descripcion') or it.get('nombre') or 'Producto')[:18]
+                subt = int(float(it.get('subtotal', 0) or 0))
+                ticket_text += f"{cant}x {desc:<18} ${subt:>7}\n"
+                if it.get("modificadores"):
+                    ticket_text += f"   ↳ {it['modificadores']}\n"
 
-        neto = data.get('neto_gravado_formateado', '$' + str(int(data.get('total', 0) / 1.21)))
-        iva = data.get('iva_21_formateado', '$' + str(int(data.get('total', 0) - (data.get('total', 0) / 1.21))))
+            tot_val = float(data.get('total', 0) or 0)
+            tot_str = data.get('total_formateado') or f"${tot_val:,.0f}".replace(",", ".")
 
-        ticket_text += f"""----------------------------------------
-Subtotal Neto (21%):       {neto:>11}
-IVA Discriminado (21%):     {iva:>11}
-TOTAL FACTURA:             {data.get('total_formateado'):>11}
+            neto_val = float(tot_val / 1.21)
+            neto_str = data.get('neto_gravado_formateado') or f"${neto_val:,.0f}".replace(",", ".")
+
+            iva_val = float(tot_val - neto_val)
+            iva_str = data.get('iva_21_formateado') or f"${iva_val:,.0f}".replace(",", ".")
+
+            ticket_text += f"""----------------------------------------
+Subtotal Neto (21%):       {neto_str:>11}
+IVA Discriminado (21%):     {iva_str:>11}
+TOTAL FACTURA:             {tot_str:>11}
 """
-        if data.get("metodo_pago") == "efectivo":
-            ticket_text += f"""Abonó con:                 ${int(data.get('paga_con', 0)):>10,}
-Vuelto:                    {data.get('vuelto_formateado'):>11}
+            if str(data.get("metodo_pago", "")).lower() == "efectivo":
+                paga_val = float(data.get('paga_con', tot_val) or 0)
+                paga_str = f"${paga_val:,.0f}".replace(",", ".")
+                vuelto_val = float(data.get('vuelto', max(0, paga_val - tot_val)) or 0)
+                vuelto_str = data.get('vuelto_formateado') or f"${vuelto_val:,.0f}".replace(",", ".")
+                ticket_text += f"""Abonó con:                 {paga_str:>11}
+Vuelto:                    {vuelto_str:>11}
 """
-        elif data.get("mp_payment_id"):
-            ticket_text += f"Comprobante MP:            {str(data.get('mp_payment_id')):>11}\n"
-        elif data.get("tarjeta_auth_code") or data.get("metodo_pago") == "tarjeta":
-            last4 = data.get("tarjeta_last4", "XXXX")
-            nom_tarj = data.get("tarjeta_nombre", "")
-            cuotas_cant = data.get("tarjeta_cuotas", 1)
-            ticket_text += f"Tarjeta:                   **** **** **** {last4}\n"
-            if nom_tarj:
-                ticket_text += f"Titular:                   {nom_tarj[:24]}\n"
-            ticket_text += f"Plan Cuotas:               {cuotas_cant} cuota(s)\n"
-            ticket_text += f"Voucher POS / Auth:        {str(data.get('tarjeta_auth_code', 'APROBADO')):>11}\n"
-        elif data.get("comprobante_transferencia"):
-            ticket_text += f"Transf. Bancaria:          {str(data.get('comprobante_transferencia')):>11}\n"
-        ticket_text += f"""----------------------------------------
+            elif data.get("mp_payment_id"):
+                ticket_text += f"Comprobante MP:            {str(data.get('mp_payment_id')):>11}\n"
+            elif data.get("tarjeta_auth_code") or str(data.get("metodo_pago", "")).lower() == "tarjeta":
+                last4 = data.get("tarjeta_last4", "XXXX")
+                nom_tarj = data.get("tarjeta_nombre", "")
+                cuotas_cant = data.get("tarjeta_cuotas", 1)
+                ticket_text += f"Tarjeta:                   **** **** **** {last4}\n"
+                if nom_tarj:
+                    ticket_text += f"Titular:                   {nom_tarj[:24]}\n"
+                ticket_text += f"Plan Cuotas:               {cuotas_cant} cuota(s)\n"
+                ticket_text += f"Voucher POS / Auth:        {str(data.get('tarjeta_auth_code', 'APROBADO')):>11}\n"
+            elif data.get("comprobante_transferencia"):
+                ticket_text += f"Transf. Bancaria:          {str(data.get('comprobante_transferencia')):>11}\n"
+
+            ticket_text += f"""----------------------------------------
 CAE Nº: {cae_num}
 Vto. CAE: {cae_vto}
 ========================================
@@ -1405,13 +1489,19 @@ Vto. CAE: {cae_vto}
 ========================================
 """
 
-        txt_widget = tk.Text(paper, font=("Courier New", 9), bg="#FFFFFF", relief="flat")
-        txt_widget.insert(tk.END, ticket_text)
-        txt_widget.config(state="disabled")
-        txt_widget.pack(fill="both", expand=True)
+            btn_close = tk.Button(paper, text="✓ Cerrar e Imprimir Ticket", font=(FONT_FAMILY, 10, "bold"), bg=COLOR_ROJO, fg=COLOR_WHITE, relief="flat", cursor="hand2", command=t_win.destroy)
+            btn_close.pack(side="bottom", fill="x", pady=(10, 0))
 
-        btn_close = tk.Button(paper, text="✓ Cerrar e Imprimir", font=(FONT_FAMILY, 10, "bold"), bg=COLOR_ROJO, fg=COLOR_WHITE, relief="flat", command=t_win.destroy)
-        btn_close.pack(fill="x", pady=(10, 0))
+            txt_widget = tk.Text(paper, font=("Courier New", 9, "bold"), bg="#FFFFFF", fg="#111827", insertbackground="#111827", selectbackground="#E5E7EB", selectforeground="#000000", relief="flat")
+            txt_widget.insert(tk.END, ticket_text)
+            txt_widget.config(state="disabled")
+            txt_widget.pack(side="top", fill="both", expand=True)
+
+        except Exception as err:
+            err_lbl = tk.Label(paper, text=f"Error al generar vista de ticket:\n{str(err)}", font=("Segoe UI", 10), fg="red", bg="#FFFFFF")
+            err_lbl.pack(pady=20)
+            btn_close = tk.Button(paper, text="Cerrar", font=(FONT_FAMILY, 10, "bold"), bg=COLOR_ROJO, fg=COLOR_WHITE, relief="flat", command=t_win.destroy)
+            btn_close.pack(fill="x", pady=(10, 0))
 
     # ------------------------------------------------------------
     # RELOJ DIGITAL Y ATAJOS
@@ -1459,11 +1549,27 @@ Vto. CAE: {cae_vto}
 
     def _abrir_ventana_arqueo(self):
         from arqueo_window import ArqueoWindow
-        ArqueoWindow(self.root, self.cajero_info, on_update=self._load_data)
+        ArqueoWindow(self.root, self.cajero_info, on_update=self._load_data, on_cierre_definitivo=self._cerrar_sesion_tras_arqueo)
+
+    def _cerrar_sesion_tras_arqueo(self):
+        """Finaliza el turno del cajero en el servidor y regresa automáticamente a la pantalla de login."""
+        if self.is_fullscreen:
+            try:
+                self.root.attributes("-fullscreen", False)
+                self.is_fullscreen = False
+            except Exception:
+                pass
+        emp_id = self.cajero_info.get("id")
+        reg_id = self.cajero_info.get("idregistro_turno")
+        try:
+            api.cerrar_turno(emp_id, reg_id, observaciones="Turno cerrado tras Cierre Z de Arqueo")
+        except Exception:
+            pass
+        self.on_logout()
 
     def _abrir_ventana_takeaway(self):
-        from takeaway_window import TakeAwayWindow
-        TakeAwayWindow(self.root, self.cajero_info, on_update=self._poll_takeaway_badge)
+        from retiros_window import RetirosWindow
+        RetirosWindow(self.root, self.cajero_info, on_update=self._poll_takeaway_badge)
 
     def _poll_takeaway_badge(self):
         def fetch():

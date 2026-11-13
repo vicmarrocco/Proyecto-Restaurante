@@ -223,6 +223,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    overflow: 'hidden',
     elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.03,

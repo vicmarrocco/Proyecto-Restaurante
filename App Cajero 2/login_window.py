@@ -24,7 +24,7 @@ class LoginWindow:
         except Exception:
             pass
 
-        self.root.title(f"Mostaza POS · Terminal de Cajero 2 ({TERMINAL_NOMBRE})")
+        self.root.title("Mostaza · Terminal de Cajero POS")
         self.root.geometry("540x720")
         self.root.resizable(False, False)
         self.root.configure(bg=COLOR_LIGHT_BG)
@@ -33,7 +33,8 @@ class LoginWindow:
         self._center_window()
 
         self.email_actual = ""
-        self.paso = "email" # "email" o "codigo"
+        self.paso = "perfiles"  # "perfiles", "email" o "codigo"
+        self.idempleado_actual = None
 
         self._build_ui()
 
@@ -92,8 +93,8 @@ class LoginWindow:
         self.content_frame = tk.Frame(self.card, bg=COLOR_WHITE)
         self.content_frame.pack(fill="both", expand=True)
 
-        if self.paso == "email":
-            self._render_paso_email()
+        if self.paso in ("email", "perfiles"):
+            self._render_paso_perfiles() if self.paso == "perfiles" else self._render_paso_email()
         else:
             self._render_paso_codigo()
 
@@ -128,6 +129,80 @@ class LoginWindow:
         )
         btn_terminos.pack(side="left", padx=4)
 
+
+    # ---------- Selección de perfil de cajero ----------
+    _AV = ["#A30002", "#B45309", "#15803D", "#1D4ED8", "#7E22CE", "#0F766E"]
+
+    def _render_paso_perfiles(self):
+        tk.Label(self.content_frame, text="¿Quién va a operar la caja?", font=(FONT_FAMILY, 13, "bold"),
+                 fg=COLOR_TEXT, bg=COLOR_WHITE, anchor="w").pack(fill="x")
+        tk.Label(self.content_frame, text="Elegí tu perfil. Te enviaremos un código de acceso a tu correo.",
+                 font=(FONT_FAMILY, 9), fg=COLOR_TEXT_MUTED, bg=COLOR_WHITE, anchor="w").pack(fill="x", pady=(0, 10))
+        self.perfiles_frame = tk.Frame(self.content_frame, bg=COLOR_WHITE)
+        self.perfiles_frame.pack(fill="both", expand=True)
+        self.lbl_cargando = tk.Label(self.perfiles_frame, text="Cargando perfiles…", font=(FONT_FAMILY, 10),
+                                     fg=COLOR_TEXT_MUTED, bg=COLOR_WHITE)
+        self.lbl_cargando.pack(pady=30)
+        tk.Button(self.content_frame, text="✉ Usar otro correo", font=(FONT_FAMILY, 10, "bold"), fg=COLOR_BLUE,
+                  bg=COLOR_WHITE, relief="flat", cursor="hand2", command=self._ir_a_email).pack(pady=(6, 0))
+        def run():
+            res = api.listar_cajeros()
+            self.root.after(0, lambda: self._mostrar_perfiles(res))
+        threading.Thread(target=run, daemon=True).start()
+
+    def _ir_a_email(self):
+        self.paso = "email"; self._build_ui()
+
+    def _mostrar_perfiles(self, res):
+        if self.paso != "perfiles" or not self.perfiles_frame.winfo_exists():
+            return
+        lista = res.get("cajeros", []) if res.get("ok") else []
+        if not lista:
+            self.lbl_cargando.configure(text="No hay perfiles disponibles.\nUsá tu correo para ingresar." if res.get("ok") else
+                                        "No se pudieron cargar los perfiles.\nUsá tu correo para ingresar.", fg=COLOR_ROJO)
+            return
+        self.lbl_cargando.destroy()
+        for i, p in enumerate(lista):
+            col = self._AV[i % len(self._AV)]
+            row, c = divmod(i, 2)
+            self.perfiles_frame.columnconfigure(c, weight=1, uniform="p")
+            f = tk.Frame(self.perfiles_frame, bg=COLOR_LIGHT_BG, highlightbackground=COLOR_BORDER, highlightthickness=1, cursor="hand2", padx=10, pady=12)
+            f.grid(row=row, column=c, sticky="nsew", padx=4, pady=4)
+            partes = p["nombre"].split()
+            ini = (partes[0][:1] + (partes[-1][:1] if len(partes) > 1 else "")).upper()
+            av = tk.Label(f, text=ini, bg=col, fg="#FFFFFF", font=(FONT_FAMILY, 16, "bold"), width=3, height=1)
+            av.pack()
+            n = tk.Label(f, text=p["nombre"], bg=COLOR_LIGHT_BG, fg=COLOR_TEXT, font=(FONT_FAMILY, 10, "bold"), wraplength=170)
+            n.pack(pady=(6, 0))
+            r = tk.Label(f, text=p.get("rol", "Cajero"), bg=COLOR_LIGHT_BG, fg=COLOR_TEXT_MUTED, font=(FONT_FAMILY, 9))
+            r.pack()
+            for w in (f, av, n, r):
+                w.bind("<Button-1>", lambda e, p=p: self._elegir_perfil(p))
+                w.bind("<Enter>", lambda e, f=f: f.configure(highlightbackground=COLOR_ROJO, highlightthickness=2))
+                w.bind("<Leave>", lambda e, f=f: f.configure(highlightbackground=COLOR_BORDER, highlightthickness=1))
+
+    def _elegir_perfil(self, p):
+        self.idempleado_actual = p["id"]
+        self.email_actual = p.get("email_oculto", "tu correo")
+        for w in self.perfiles_frame.winfo_children():
+            w.destroy()
+        tk.Label(self.perfiles_frame, text=f"Enviando código a {p['nombre']}…", font=(FONT_FAMILY, 11),
+                 fg=COLOR_TEXT_MUTED, bg=COLOR_WHITE).pack(pady=40)
+        def run():
+            res = api.solicitar_codigo_gmail(idempleado=p["id"])
+            self.root.after(0, lambda: self._on_perfil_res(res))
+        threading.Thread(target=run, daemon=True).start()
+
+    def _on_perfil_res(self, res):
+        if res.get("ok"):
+            self.paso = "codigo"; self._build_ui()
+            if res.get("codigo_demo"):
+                messagebox.showinfo("Código Generado", f"Código enviado a {self.email_actual}.\n\n(Demo/Local: {res['codigo_demo']})")
+        else:
+            self.idempleado_actual = None
+            messagebox.showerror("Error", res.get("error", "No se pudo enviar el código."))
+            self.paso = "perfiles"; self._build_ui()
+
     def _render_paso_email(self):
         lbl_inst = tk.Label(
             self.content_frame,
@@ -157,7 +232,7 @@ class LoginWindow:
             relief="solid",
             bd=1
         )
-        self.entry_email.insert(0, self.email_actual if self.email_actual else "cajero1@mostaza.com.ar")
+        self.entry_email.insert(0, self.email_actual if (self.email_actual and self.idempleado_actual is None) else "")
         self.entry_email.pack(fill="x", ipady=8, pady=(0, 16))
         self.entry_email.focus_set()
         self.entry_email.bind("<Return>", lambda e: self._solicitar_codigo())
@@ -183,6 +258,7 @@ class LoginWindow:
             return
 
         self.email_actual = email
+        self.idempleado_actual = None
         self.btn_solicitar.config(state="disabled", text="Enviando código...")
 
         def run_req():
@@ -322,7 +398,7 @@ class LoginWindow:
             self._verificar_codigo()
 
     def _volver_a_email(self):
-        self.paso = "email"
+        self.paso = "perfiles" if self.idempleado_actual else "email"
         self._build_ui()
 
     def _verificar_codigo(self):
@@ -334,7 +410,8 @@ class LoginWindow:
         self.btn_validar.config(state="disabled", text="Validando...")
 
         def run_verify():
-            res = api.verificar_codigo_gmail(self.email_actual, codigo)
+            email_param = "" if self.idempleado_actual else self.email_actual
+            res = api.verificar_codigo_gmail(email_param, codigo, idempleado=self.idempleado_actual)
             self.root.after(0, lambda: self._on_verify_res(res))
 
         threading.Thread(target=run_verify, daemon=True).start()

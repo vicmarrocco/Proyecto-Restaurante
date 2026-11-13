@@ -15,21 +15,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once(__DIR__ . '/../../conexion.php');
 
 $repartidor = trim($_GET['repartidor'] ?? '');
+$idempleado = intval($_GET['idempleado'] ?? 0);
 
 try {
-    // 1. Pedidos entregados hoy
+    // 1. Pedidos entregados en el turno actual (soporta turnos nocturnos que cruzan la medianoche)
     $sqlEntregados = "SELECT COUNT(*) as cant, 
                              COALESCE(SUM(total), 0) as total_facturado,
-                             COALESCE(SUM(CASE WHEN metodo_pago = 'efectivo' THEN total ELSE 0 END), 0) as efectivo_recaudado,
+                             COALESCE(SUM(CASE WHEN LOWER(metodo_pago) = 'efectivo' THEN total ELSE 0 END), 0) as efectivo_recaudado,
                              COALESCE(SUM(propina), 0) as total_propinas
                       FROM pedido_web 
                       WHERE tipo_entrega = 'delivery' 
                         AND estado = 'Entregado' 
-                        AND DATE(fecha) = CURDATE()";
+                        AND (
+                            DATE(fecha) = CURDATE() 
+                            OR DATE(hora_entregado) = CURDATE() 
+                            OR hora_entregado >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                            OR fecha >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                        )";
     
+    $conds = [];
+    $params = [];
+    $types = "";
     if (!empty($repartidor)) {
-        $stmt = $conn->prepare($sqlEntregados . " AND repartidor_asignado = ?");
-        $stmt->bind_param("s", $repartidor);
+        $conds[] = "(repartidor_asignado = ? OR repartidor_asignado LIKE ?)";
+        $params[] = $repartidor;
+        $params[] = "%$repartidor%";
+        $types .= "ss";
+    }
+    if ($idempleado > 0) {
+        $conds[] = "idempleado_repartidor = ?";
+        $params[] = $idempleado;
+        $types .= "i";
+    }
+
+    if (!empty($conds)) {
+        $stmt = $conn->prepare($sqlEntregados . " AND (" . implode(" OR ", $conds) . ")");
+        $stmt->bind_param($types, ...$params);
     } else {
         $stmt = $conn->prepare($sqlEntregados);
     }
@@ -40,9 +61,9 @@ try {
     $sqlEnCamino = "SELECT COUNT(*) as cant_en_camino 
                     FROM pedido_web 
                     WHERE tipo_entrega = 'delivery' AND estado = 'En Camino'";
-    if (!empty($repartidor)) {
-        $stmtC = $conn->prepare($sqlEnCamino . " AND repartidor_asignado = ?");
-        $stmtC->bind_param("s", $repartidor);
+    if (!empty($conds)) {
+        $stmtC = $conn->prepare($sqlEnCamino . " AND (" . implode(" OR ", $conds) . ")");
+        $stmtC->bind_param($types, ...$params);
     } else {
         $stmtC = $conn->prepare($sqlEnCamino);
     }
@@ -54,9 +75,9 @@ try {
                         COALESCE(SUM(total), 0) as total_historico
                  FROM pedido_web
                  WHERE tipo_entrega = 'delivery' AND estado = 'Entregado'";
-    if (!empty($repartidor)) {
-        $stmtT = $conn->prepare($sqlTotal . " AND repartidor_asignado = ?");
-        $stmtT->bind_param("s", $repartidor);
+    if (!empty($conds)) {
+        $stmtT = $conn->prepare($sqlTotal . " AND (" . implode(" OR ", $conds) . ")");
+        $stmtT->bind_param($types, ...$params);
     } else {
         $stmtT = $conn->prepare($sqlTotal);
     }

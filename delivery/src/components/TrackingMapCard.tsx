@@ -21,6 +21,7 @@ interface TrackingMapCardProps {
   titulo?: string;
   subtitulo?: string;
   iniciarExpandido?: boolean;
+  ocultarContacto?: boolean;
 }
 
 export const TrackingMapCard: React.FC<TrackingMapCardProps> = ({
@@ -29,8 +30,16 @@ export const TrackingMapCard: React.FC<TrackingMapCardProps> = ({
   titulo,
   subtitulo,
   iniciarExpandido = true,
+  ocultarContacto = false,
 }) => {
   const [mapaExpandido, setMapaExpandido] = useState(iniciarExpandido);
+
+  const esEnCocina =
+    ocultarContacto ||
+    pedido.estado === 'En Preparación' ||
+    (pedido.estado as string) === 'En Preparacion' ||
+    (pedido.estado as string) === 'En Cocina' ||
+    pedido.estado === 'Recibido';
 
   const sucursalLat = pedido.sucursal_lat ?? -26.185200;
   const sucursalLng = pedido.sucursal_lng ?? -58.175600;
@@ -206,42 +215,52 @@ export const TrackingMapCard: React.FC<TrackingMapCardProps> = ({
       )}
 
       {/* Botón Principal Exclusivo de Navegación Google Maps GPS */}
-      <TouchableOpacity
-        style={styles.btnGoogleMapsFull}
-        onPress={abrirGoogleMaps}
-        activeOpacity={0.85}>
-        <View style={styles.btnGpsLeft}>
-          <View style={styles.btnGpsIconBox}>
-            <Text style={styles.btnGpsEmoji}>🗺️</Text>
+      {!esEnCocina && (
+        <TouchableOpacity
+          style={styles.btnGoogleMapsFull}
+          onPress={abrirGoogleMaps}
+          activeOpacity={0.85}>
+          <View style={styles.btnGpsLeft}>
+            <View style={styles.btnGpsIconBox}>
+              <Text style={styles.btnGpsEmoji}>🗺️</Text>
+            </View>
+            <View style={styles.btnGpsTextCol}>
+              <Text style={styles.btnGpsTitle}>NAVEGAR CON GOOGLE MAPS GPS</Text>
+              <Text style={styles.btnGpsSubtitle}>
+                Ruta en vivo desde sucursal · {pedido.distancia_formateada || '2.4 km'} (~{pedido.tiempo_estimado_min || 15} min)
+              </Text>
+            </View>
           </View>
-          <View style={styles.btnGpsTextCol}>
-            <Text style={styles.btnGpsTitle}>NAVEGAR CON GOOGLE MAPS GPS</Text>
-            <Text style={styles.btnGpsSubtitle}>
-              Ruta en vivo desde sucursal · {pedido.distancia_formateada || '2.4 km'} (~{pedido.tiempo_estimado_min || 15} min)
-            </Text>
-          </View>
-        </View>
-        <Text style={styles.btnGpsArrow}>➔</Text>
-      </TouchableOpacity>
+          <Text style={styles.btnGpsArrow}>➔</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Botones de Comunicación con el Cliente */}
-      <View style={styles.contactRow}>
-        <TouchableOpacity
-          style={[styles.btnContact, styles.btnCall]}
-          onPress={llamarCliente}
-          activeOpacity={0.8}>
-          <Text style={styles.btnContactEmoji}>📞</Text>
-          <Text style={styles.btnContactText}>Llamar al Cliente</Text>
-        </TouchableOpacity>
+      {!esEnCocina ? (
+        <View style={styles.contactRow}>
+          <TouchableOpacity
+            style={[styles.btnContact, styles.btnCall]}
+            onPress={llamarCliente}
+            activeOpacity={0.8}>
+            <Text style={styles.btnContactEmoji}>📞</Text>
+            <Text style={styles.btnContactText}>Llamar al Cliente</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.btnContact, styles.btnWsp]}
-          onPress={enviarWhatsApp}
-          activeOpacity={0.8}>
-          <Text style={styles.btnContactEmoji}>💬</Text>
-          <Text style={styles.btnContactText}>WhatsApp</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={[styles.btnContact, styles.btnWsp]}
+            onPress={enviarWhatsApp}
+            activeOpacity={0.8}>
+            <Text style={styles.btnContactEmoji}>💬</Text>
+            <Text style={styles.btnContactText}>WhatsApp</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.cocinaLockBox}>
+          <Text style={styles.cocinaLockText}>
+            🔒 Modo Cocina: Contacto y navegación disponibles una vez despachado el pedido
+          </Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -514,5 +533,22 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '800',
+  },
+  cocinaLockBox: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  cocinaLockText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+    textAlign: 'center',
   },
 });

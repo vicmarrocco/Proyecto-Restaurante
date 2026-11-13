@@ -18,6 +18,20 @@ require_once(__DIR__ . '/../../mail/enviar_correo.php');
 
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
 $email = htmlspecialchars(trim($input['email'] ?? ''));
+
+// Login por perfil: si llega idempleado (o si el email está enmascarado con ***), se resuelve el correo en el servidor.
+$idempleadoPerfil = intval($input['idempleado'] ?? 0);
+if ($idempleadoPerfil > 0 || empty($email) || strpos($email, '***') !== false) {
+    if ($idempleadoPerfil > 0) {
+        $q = $conn->prepare("SELECT email FROM empleado WHERE idempleado = ? AND activo = 1 LIMIT 1");
+        $q->bind_param("i", $idempleadoPerfil);
+        $q->execute();
+        $fila = $q->get_result()->fetch_assoc();
+        if ($fila && !empty($fila['email'])) {
+            $email = $fila['email'];
+        }
+    }
+}
 $app = strtolower(trim($input['app'] ?? 'cajero'));
 
 if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {

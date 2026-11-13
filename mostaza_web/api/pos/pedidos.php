@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // Verificar pedido
-    $stmtCheck = $conn->prepare("SELECT idpedido, estado, numero_mesa, tipo_entrega FROM pedido_web WHERE idpedido = ?");
+    $stmtCheck = $conn->prepare("SELECT idpedido, estado, numero_mesa, tipo_entrega, metodo_pago, total, idarqueo, comprobante_transferencia, notas FROM pedido_web WHERE idpedido = ?");
     $stmtCheck->bind_param("i", $idpedido);
     $stmtCheck->execute();
     $p = $stmtCheck->get_result()->fetch_assoc();
@@ -107,19 +107,99 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
-    // 2. Acción: Cancelar Pedido
+    // 2. Acción: Cancelar Pedido con Devolución de Dinero
     $motivo = trim($input['motivo_cancelacion'] ?? ($input['motivo'] ?? 'Cancelado por solicitud del cliente en caja'));
     $canceladoPor = trim($input['cancelado_por'] ?? ($_SESSION['cajero_nombre'] ?? 'Cajero'));
     $idEmpleado = !empty($input['idempleado']) ? intval($input['idempleado']) : ($_SESSION['cajero_id'] ?? null);
     $rolCanc = trim($input['rol'] ?? 'Cajero');
+    $devolverDinero = isset($input['devolver_dinero']) ? filter_var($input['devolver_dinero'], FILTER_VALIDATE_BOOLEAN) : true;
 
     if ($p['estado'] === 'Cancelado') {
         echo json_encode(['ok' => false, 'error' => 'El pedido ya se encuentra cancelado.']);
         exit();
     }
 
+    $metodoPago = strtolower(trim($p['metodo_pago'] ?? 'efectivo'));
+    $totalPedido = floatval($p['total'] ?? 0);
+    $idarqueo = !empty($p['idarqueo']) ? intval($p['idarqueo']) : null;
+    $infoDevolucion = [];
+
+    if ($devolverDinero && $totalPedido > 0) {
+        if ($metodoPago === 'efectivo') {
+            // A) Devolución en Efectivo
+            if ($idarqueo) {
+                $conn->query("
+                    UPDATE caja_arqueo 
+                    SET ventas_efectivo = GREATEST(0, ventas_efectivo - $totalPedido),
+                        total_ventas = GREATEST(0, total_ventas - $totalPedido)
+                    WHERE idarqueo = $idarqueo
+                ");
+                $stmtRet = $conn->prepare("
+                    INSERT INTO caja_retiro (fk_id_arqueo, monto, motivo, fecha_hora)
+                    VALUES (?, ?, ?, NOW())
+                ");
+                $motivoRetiro = "Devolución Efectivo Cancelación Comanda #$idpedido: $motivo";
+                if ($stmtRet) {
+                    $stmtRet->bind_param("ids", $idarqueo, $totalPedido, $motivoRetiro);
+                    $stmtRet->execute();
+                }
+            }
+            $infoDevolucion = [
+                'metodo' => 'efectivo',
+                'monto' => $totalPedido,
+                'mensaje' => "Se reintegraron $" . number_format($totalPedido, 0, ',', '.') . " en Efectivo al cliente."
+            ];
+        } elseif ($metodoPago === 'mercadopago') {
+            // B) Devolución vía Mercado Pago Refunds API
+            $rawRef = $p['comprobante_transferencia'] ?? ($p['notas'] ?? '');
+            preg_match('/(?:#|Operación #|MP-?)(\d{6,})/', $rawRef, $matches);
+            $paymentIdMp = $matches[1] ?? '';
+
+            $resRefund = reembolsarPagoMercadoPago($paymentIdMp, $totalPedido, $motivo);
+
+            if ($idarqueo) {
+                $conn->query("
+                    UPDATE caja_arqueo 
+                    SET ventas_mercadopago = GREATEST(0, ventas_mercadopago - $totalPedido),
+                        total_ventas = GREATEST(0, total_ventas - $totalPedido)
+                    WHERE idarqueo = $idarqueo
+                ");
+            }
+
+            $infoDevolucion = [
+                'metodo' => 'mercadopago',
+                'monto' => $totalPedido,
+                'refund_id' => $resRefund['refund_id'] ?? null,
+                'mensaje' => $resRefund['ok'] 
+                    ? "Reembolso procesado en Mercado Pago por $" . number_format($totalPedido, 0, ',', '.') . " (Ref: #{$resRefund['refund_id']})." 
+                    : "Devolución registrada localmente: " . ($resRefund['error'] ?? 'Sin error reportado.')
+            ];
+        } else {
+            // Otros métodos (tarjeta / transferencia)
+            $infoDevolucion = [
+                'metodo' => $metodoPago,
+                'monto' => $totalPedido,
+                'mensaje' => "Se anuló el cobro de $" . number_format($totalPedido, 0, ',', '.') . " ($metodoPago)."
+            ];
+        }
+    }
+
+    $detalleAudit = "Comanda cancelada por $canceladoPor. Motivo: $motivo.";
+    if (!empty($infoDevolucion['mensaje'])) {
+        $detalleAudit .= " " . $infoDevolucion['mensaje'];
+    }
+
+    // Actualizar estado del pedido a Cancelado y estado de pago a Reembolsado
+    $conn->query("
+        UPDATE pedido_web 
+        SET estado = 'Cancelado', 
+            estado_pago = 'Reembolsado',
+            notas = CONCAT(IFNULL(notas, ''), ' | ', '" . $conn->real_escape_string($detalleAudit) . "')
+        WHERE idpedido = $idpedido
+    ");
+
     // Registrar auditoría estricta de cancelación
-    registrarAuditoriaPedido($conn, $idpedido, 'Cancelado', 'Cancelación de Pedido', $rolCanc, $canceladoPor, $idEmpleado, $motivo);
+    registrarAuditoriaPedido($conn, $idpedido, 'Cancelado', 'Cancelación con Devolución de Dinero', $rolCanc, $canceladoPor, $idEmpleado, $detalleAudit);
 
     // Si tenía mesa ocupada, liberarla
     if (!empty($p['numero_mesa'])) {
@@ -129,9 +209,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     echo json_encode([
         'ok' => true,
-        'mensaje' => "Comanda #$idpedido cancelada exitosamente.",
+        'mensaje' => "Comanda #$idpedido cancelada exitosamente. " . ($infoDevolucion['mensaje'] ?? ''),
         'idpedido' => $idpedido,
         'estado' => 'Cancelado',
+        'estado_pago' => 'Reembolsado',
+        'devolucion' => $infoDevolucion,
         'motivo' => $motivo
     ]);
     exit();
@@ -156,17 +238,26 @@ $sql = "SELECT p.*, f.idfactura, f.numero_factura, f.tipo_comprobante, f.cae, f.
 $params = [];
 $types = "";
 
-if ($fecha !== 'todas') {
-    $fechaFiltro = ($fecha === 'hoy' || empty($fecha)) ? date('Y-m-d') : $fecha;
-    $sql .= " AND (DATE(p.fecha) = ? OR p.estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'En Preparación', 'Listo para Despacho', 'Listo'))";
-    $params[] = $fechaFiltro;
-    $types .= "s";
-}
-
 $tipoEntrega = $_GET['tipo_entrega'] ?? null;
 $idCocinero = !empty($_GET['idempleado_cocinero']) ? intval($_GET['idempleado_cocinero']) : null;
 $idMesero = !empty($_GET['idempleado_mesero']) ? intval($_GET['idempleado_mesero']) : null;
 $idSeccion = !empty($_GET['idseccion']) ? intval($_GET['idseccion']) : null;
+
+if ($fecha !== 'todas') {
+    $fechaFiltro = ($fecha === 'hoy' || empty($fecha)) ? date('Y-m-d') : $fecha;
+    if ($tipoEntrega === 'takeaway') {
+        // En Take Away / Mostrador: retener pedidos activos siempre, y los entregados/cancelados de hoy o recientes (últimos 3 días) para mantener el historial visible
+        $sql .= " AND (DATE(p.fecha) >= DATE_SUB(?, INTERVAL 3 DAY) OR DATE(p.hora_entregado) >= DATE_SUB(?, INTERVAL 3 DAY) OR p.estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'En Preparación', 'Listo para Despacho', 'Listo'))";
+        $params[] = $fechaFiltro;
+        $params[] = $fechaFiltro;
+        $types .= "ss";
+    } else {
+        $sql .= " AND (DATE(p.fecha) = ? OR DATE(p.hora_entregado) = ? OR p.estado IN ('Recibido', 'En Cocina', 'En Preparacion', 'En Preparación', 'Listo para Despacho', 'Listo'))";
+        $params[] = $fechaFiltro;
+        $params[] = $fechaFiltro;
+        $types .= "ss";
+    }
+}
 
 if (!empty($tipoEntrega) && $tipoEntrega !== 'todos') {
     $sql .= " AND p.tipo_entrega = ?";
@@ -248,7 +339,9 @@ while ($row = $res->fetch_assoc()) {
         'tipo_comprobante' => $row['tipo_comprobante'] ?? 'Factura B',
         'cae' => $row['cae'] ?? '74123456789012',
         'cae_vto' => $row['cae_vto'] ? date('d/m/Y', strtotime($row['cae_vto'])) : date('d/m/Y', strtotime('+10 days')),
-        'fecha' => date('d/m/Y H:i:s', strtotime($row['fecha'])),
+        'fecha' => date('Y-m-d H:i:s', strtotime($row['fecha'])),
+        'fecha_iso' => date('c', strtotime($row['fecha'])),
+        'fecha_formateada' => date('d/m/Y H:i:s', strtotime($row['fecha'])),
         'hora' => date('H:i', strtotime($row['fecha'])),
         'tipo_entrega' => $row['tipo_entrega'],
         'numero_mesa' => $row['numero_mesa'] ? intval($row['numero_mesa']) : null,

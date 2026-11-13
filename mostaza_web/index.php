@@ -269,7 +269,7 @@ if ($stmtDestacados) {
 <!-- ============================================================
      3. LAS MÁS PEDIDAS (PRODUCTOS DESTACADOS CON PEDIDO AJAX)
      ============================================================ -->
-<section class="section-featured-products" style="background:#FFFFFF;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:60px 4% 70px;">
+<section class="section-featured-products" style="background:#ECE3D0;border-top:1px solid #D5C6AE;border-bottom:1px solid #D5C6AE;padding:60px 2% 70px;">
     <div class="text-center mb-5">
         <span class="section-badge"><i class="fa-solid fa-fire"></i> Top Ventas de la Semana</span>
         <h2 style="font-family:'Montserrat',sans-serif;font-size:clamp(1.8rem, 4vw, 2.6rem);font-weight:900;text-transform:uppercase;color:var(--text-main);margin-top:6px;">

@@ -25,6 +25,14 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   const [loading, setLoading] = useState(false);
 
   const tomarPedido = async () => {
+    if (!esListo) {
+      Alert.alert(
+        '👨‍🍳 Pedido en Cocina',
+        'Este pedido todavía está siendo preparado en cocina. Solo podés tomarlo e iniciar viaje una vez que cocina lo marque como "Listo para Despacho".'
+      );
+      return;
+    }
+
     Alert.alert(
       'Iniciar Reparto Oficial',
       `¿Deseás tomar la comanda #${pedido.idpedido} y comenzar el viaje a ${pedido.cliente_direccion}?`,
@@ -114,9 +122,10 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   };
 
   const esEnCamino = pedido.estado === 'En Camino';
-  const esPendiente =
+  const esListo =
     pedido.estado === 'Listo para Despacho' ||
-    (pedido.estado as string) === 'Listo' ||
+    (pedido.estado as string) === 'Listo';
+  const esEnCocina =
     pedido.estado === 'En Preparación' ||
     (pedido.estado as string) === 'En Preparacion' ||
     (pedido.estado as string) === 'En Cocina' ||
@@ -128,7 +137,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     <View style={[styles.card, destacado && styles.cardDestacado]}>
       {/* Header de la tarjeta con badges */}
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, paddingRight: 8 }}>
           <View style={styles.titleRow}>
             <Text style={styles.orderId}>Comanda #{pedido.idpedido}</Text>
             {pedido.numero_pedido_usuario ? (
@@ -137,7 +146,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
               </View>
             ) : null}
           </View>
-          <Text style={styles.orderTime}>
+          <Text style={styles.orderTime} numberOfLines={1} ellipsizeMode="tail">
             🕒 {pedido.hora} hs · 📍 {pedido.sucursal || 'Mostaza Formosa Centro'}
           </Text>
           {pedido.repartidor_asignado ? (
@@ -157,7 +166,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.clientName}>{pedido.cliente_nombre}</Text>
-            <Text style={styles.clientPhone}>{pedido.cliente_telefono || 'Sin teléfono'}</Text>
+            <Text style={styles.clientPhone}>
+              {esEnCocina ? '🔒 Contacto disponible al retirar' : (pedido.cliente_telefono || 'Sin teléfono')}
+            </Text>
           </View>
         </View>
 
@@ -169,7 +180,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
       </View>
 
       {/* SEGUIMIENTO DE DIRECCIÓN EN TIEMPO REAL CON GOOGLE MAPS GPS */}
-      <TrackingMapCard pedido={pedido} />
+      <TrackingMapCard pedido={pedido} ocultarContacto={esEnCocina} />
 
       {/* Desglose de ítems (Colapsable / Expandible) */}
       <TouchableOpacity
@@ -219,13 +230,21 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         </View>
       ) : (
         <>
-          {esPendiente && (
+          {esListo && (
             <TouchableOpacity
               style={[styles.actionBtn, styles.btnTomar]}
               onPress={tomarPedido}
               activeOpacity={0.85}>
               <Text style={styles.actionBtnText}>🛵 TOMAR PEDIDO E INICIAR VIAJE</Text>
             </TouchableOpacity>
+          )}
+
+          {esEnCocina && (
+            <View style={styles.cookingBox}>
+              <Text style={styles.cookingBoxText}>
+                👨‍🍳 EN PREPARACIÓN EN COCINA · Esperando que esté listo
+              </Text>
+            </View>
           )}
 
           {esEnCamino && (
@@ -272,6 +291,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginHorizontal: 16,
     marginBottom: 16,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
@@ -484,5 +504,23 @@ const styles = StyleSheet.create({
     color: '#166534',
     fontSize: 13,
     fontWeight: '800',
+  },
+  cookingBox: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+  },
+  cookingBoxText: {
+    color: '#92400E',
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: 0.3,
   },
 });

@@ -15,6 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once(__DIR__ . '/../../conexion.php');
+require_once(__DIR__ . '/../tesoreria/TesoreriaService.php');
 
 $rawJson = file_get_contents('php://input');
 $input = !empty($rawJson) ? json_decode($rawJson, true) : [];
@@ -113,6 +114,9 @@ elseif ($accion === 'retiro_efectivo' || $accion === 'sangria') {
     $idRetiro = $stmtRet->insert_id;
 
     $conn->query("UPDATE caja_arqueo SET monto_retiros = monto_retiros + $monto WHERE idarqueo = $idarqueo");
+
+    // Impactar en Tesorería Central (Ingreso por Sangría de Caja)
+    TesoreriaService::ingresarRetiroCaja($conn, $idarqueo, $numeroCaja, $monto, $cajero, $motivo, $idEmpleado);
 
     echo json_encode([
         'ok' => true,
@@ -223,6 +227,9 @@ elseif ($accion === 'cerrar_caja' || $accion === 'cierre_z') {
     $stmtUpd->bind_param("dddssi", $montoFisico, $totalEsperadoSistema, $diferencia, $obsCierre, $fechaCierre, $idarqueo);
 
     if ($stmtUpd->execute()) {
+        // Impactar en Tesorería Central (Ingreso por Cierre Z de Caja)
+        TesoreriaService::ingresarCierreCaja($conn, $idarqueo, intval($caja['numero_caja'] ?? 1), $montoFisico, $caja['cajero'], !empty($caja['idempleado']) ? intval($caja['idempleado']) : null);
+
         $diffTexto = "Cuadre Exacto ($0)";
         if ($diferencia > 0) $diffTexto = "+$" . number_format($diferencia, 0, ',', '.') . " (Sobrante)";
         elseif ($diferencia < 0) $diffTexto = "-$" . number_format(abs($diferencia), 0, ',', '.') . " (Faltante)";

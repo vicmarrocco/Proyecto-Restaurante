@@ -7,6 +7,7 @@
 // ============================================================
 session_start();
 require('conexion.php');
+require_once(__DIR__ . '/config_pagos.php');
 require('mail/enviar_correo.php');
 
 if (!isset($_SESSION['usuario_id'])) {
@@ -145,15 +146,8 @@ if ($tipoEntrega === 'salon' && !empty($notasSalon)) {
 $estadoPago = 'Pendiente';
 
 if ($metodoPago === 'mercadopago') {
-    $mpRefUsuario = htmlspecialchars(trim($_POST['mp_referencia_usuario'] ?? ''));
-    if (empty($mpPaymentId)) {
-        $mpPaymentId = !empty($mpRefUsuario) ? $mpRefUsuario : ('MP-' . mt_rand(100000000, 999999999));
-    }
-    $estadoPago = 'Aprobado';
-    $notasPedido[] = "Mercado Pago Aprobado · Operación #$mpPaymentId";
-    if (empty($comprobanteTransf)) {
-        $comprobanteTransf = "Mercado Pago: #$mpPaymentId";
-    }
+    // El estado real se confirma contra la API de Mercado Pago más abajo (ya con el total calculado).
+    $estadoPago = 'Pendiente';
 } elseif ($metodoPago === 'tarjeta') {
     $numTarjeta = preg_replace('/\D/', '', $_POST['tarjeta_numero'] ?? '');
     if (strlen($numTarjeta) < 13) {
@@ -223,7 +217,7 @@ $descuentoTotal = $descuento + $descuentoPuntos;
 // Costo de Envío
 $costoEnvio = 0.00;
 if ($tipoEntrega === 'delivery' && $subtotal > 0 && $subtotal < 25000) {
-    $costoEnvio = 1200.00;
+    $costoEnvio = 1.00;
 }
 
 // Propina
@@ -237,6 +231,28 @@ if ($propData['tipo'] === 'porcentaje' && $propData['valor'] > 0) {
 
 $total = max(0, ($subtotal - $descuentoTotal) + $costoEnvio + $propina);
 $puntosGanados = intval($total / 100);
+
+// ------------------------------------------------------------
+// 2b. Verificación del pago de Mercado Pago EN EL SERVIDOR
+// ------------------------------------------------------------
+if ($metodoPago === 'mercadopago') {
+    $idPagoCliente = $mpPaymentId ?: trim($_POST['mp_referencia_usuario'] ?? '');
+    $verifMp = mpVerificarPagoParaPedido($idPagoCliente, $_SESSION['mp_external_ref'] ?? '', $total);
+    if (empty($verifMp['ok'])) {
+        if ($tipoEntrega === 'salon' && $numeroMesa) {
+            $conn->query("UPDATE mesa SET estado = 'disponible' WHERE numero_mesa = " . intval($numeroMesa));
+        }
+        $_SESSION['error_checkout'] = 'No pudimos confirmar tu pago en Mercado Pago: ' . $verifMp['error'];
+        header("Location: carrito.php");
+        exit();
+    }
+    $mpPaymentId = $verifMp['payment_id'];
+    $estadoPago = 'Aprobado';
+    $notasPedido[] = "Mercado Pago Aprobado · Operación #$mpPaymentId";
+    $comprobanteTransf = "Mercado Pago: #$mpPaymentId";
+    $notasFinales = implode(' | ', $notasPedido);
+    unset($_SESSION['mp_external_ref'], $_SESSION['mp_preference_id'], $_SESSION['mp_init_point'], $_SESSION['mp_pago_verificado']);
+}
 
 // Vuelto si paga en efectivo (sin bloqueos de montos mayores)
 $pagaCon = null;
@@ -363,6 +379,12 @@ try {
     $nombreClienteWeb = $usuario['nombre'] . ' ' . $usuario['apellido'];
     $detallesAuditWeb = "Pedido ingresado vía Tienda Online | Modalidad: $tipoEntrega | Pago: $metodoPago | Total: $$total";
     registrarAuditoriaPedido($conn, $idpedido, 'Recibido', 'Pedido Creado en Tienda Web', 'Cliente Web', $nombreClienteWeb, null, $detallesAuditWeb);
+
+    // E) Acreditar fondos digitales en Tesorería Central si el pago fue aprobado
+    if ($metodoPago === 'mercadopago' && $estadoPago === 'Aprobado') {
+        require_once(__DIR__ . '/api/tesoreria/TesoreriaService.php');
+        TesoreriaService::ingresarVentaDigitalMP($conn, $idpedido, $total, $nombreClienteWeb, $mpPaymentId);
+    }
 
     $conn->commit();
 

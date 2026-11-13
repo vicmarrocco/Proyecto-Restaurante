@@ -34,7 +34,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [online, setOnline] = useState(true);
-  const [filtroTab, setFiltroTab] = useState<'todos' | 'listos' | 'en_camino' | 'en_preparacion'>('todos');
+  const [filtroTab, setFiltroTab] = useState<'listos' | 'en_camino' | 'en_preparacion'>('listos');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Estados del Ticket de Rendimiento en Cierre de Turno
@@ -133,8 +133,7 @@ export default function HomeScreen() {
       );
     }
 
-    // Pestaña "Todos": no mostrar órdenes que otro rider tiene en viaje
-    return true;
+    return false;
   });
 
   const pedidosEnCamino = pedidos.filter(
@@ -192,7 +191,6 @@ export default function HomeScreen() {
       {/* Pestañas de Filtro Interactivas con Badges en Vivo */}
       <View style={styles.tabsContainer}>
         {[
-          { key: 'todos', label: 'Todos', count: pedidosFiltrados.length },
           { key: 'listos', label: '🚀 Listos', count: pedidosListos.length },
           { key: 'en_camino', label: '🛵 En Viaje', count: pedidosEnCamino.length },
           { key: 'en_preparacion', label: '👨‍🍳 Cocina', count: pedidosCocina.length },
@@ -260,9 +258,7 @@ export default function HomeScreen() {
                   ? 'No hay pedidos empaquetados listos para tomar en este momento.'
                   : filtroTab === 'en_camino'
                   ? 'No tenés ningún pedido en viaje. Podés tomar uno de la pestaña "Listos".'
-                  : filtroTab === 'en_preparacion'
-                  ? 'No hay pedidos en la línea de cocina de Mostaza.'
-                  : 'No hay pedidos activos pendientes de entrega.'}
+                  : 'No hay pedidos en la línea de cocina de Mostaza.'}
               </Text>
             </View>
           }

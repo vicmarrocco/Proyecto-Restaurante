@@ -50,9 +50,9 @@ export default function HistorialMeseroScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>📊 MI HISTORIAL DE ATENCIONES</Text>
-          <Text style={styles.headerSub}>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <Text style={styles.headerTitle} numberOfLines={1}>📊 MI HISTORIAL DE ATENCIONES</Text>
+          <Text style={styles.headerSub} numberOfLines={1}>
             🤵 {mesero?.nombre_completo || mesero?.nombre || 'Mesero'} · {mesero?.seccion_nombre || 'Salón Principal'}
           </Text>
         </View>

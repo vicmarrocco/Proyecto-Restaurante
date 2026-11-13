@@ -17,7 +17,7 @@ $conn->set_charset("utf8mb4");
 
 require_once(__DIR__ . '/config_pagos.php');
 
-// Auto-migración y compatibilidad silenciosa
+
 function verificarEstructuraWeb($conn) {
     // 1. Tabla usuario_web
     $conn->query("CREATE TABLE IF NOT EXISTS `usuario_web` (
@@ -39,7 +39,7 @@ function verificarEstructuraWeb($conn) {
       UNIQUE KEY `email_unico` (`email`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
 
-    // 1.1 Tabla rol oficial
+    
     $conn->query("CREATE TABLE IF NOT EXISTS `rol` (
       `idrol` INT(11) NOT NULL AUTO_INCREMENT,
       `rol` VARCHAR(50) NOT NULL,
@@ -67,8 +67,6 @@ function verificarEstructuraWeb($conn) {
       `token` VARCHAR(10) DEFAULT NULL,
       `token_expira` DATETIME DEFAULT NULL,
       `token_intentos` INT(11) NOT NULL DEFAULT 0,
-      `fk_id_telefono` INT(11) DEFAULT NULL,
-      `fk_id_email` INT(11) DEFAULT NULL,
       `fk_id_rol` INT(11) NOT NULL DEFAULT 2,
       `fk_id_genero` INT(11) DEFAULT NULL,
       `fk_id_turno` INT(11) DEFAULT 1,
@@ -86,7 +84,7 @@ function verificarEstructuraWeb($conn) {
       UNIQUE KEY `email_empleado_unico` (`email`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;");
 
-    // Verificar si faltan columnas en empleado
+    
     $colsEmp = $conn->query("SHOW COLUMNS FROM `empleado`");
     $empCols = [];
     if ($colsEmp) {
@@ -110,7 +108,8 @@ function verificarEstructuraWeb($conn) {
         'estado_servicio' => "ENUM('Disponible', 'En Reparto', 'En Descanso', 'Desconectado') DEFAULT 'Disponible'",
         'calificacion' => "DECIMAL(3,2) DEFAULT 4.95",
         'viajes_totales' => "INT(11) DEFAULT 0",
-        'fk_id_seccion' => "INT(11) NOT NULL DEFAULT 1"
+        'fk_id_seccion' => "INT(11) NOT NULL DEFAULT 1",
+        'fk_id_seccion_2' => "INT(11) DEFAULT NULL"
     ];
     foreach ($nuevasColsEmp as $cName => $cDef) {
         if (!in_array($cName, $empCols)) {

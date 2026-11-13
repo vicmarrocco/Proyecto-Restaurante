@@ -86,9 +86,9 @@ if (empty($_SESSION['mp_external_ref']) || !empty($input['regenerar'])) {
 }
 $externalRef = $_SESSION['mp_external_ref'];
 
-// Construir URLs de retorno hacia carrito.php
-$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+// Construir URLs de retorno hacia carrito.php (compatible con proxy HTTPS / Cloudflare Tunnel)
+$scheme = ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')) ? 'https' : 'http';
+$host   = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? ($_SERVER['HTTP_HOST'] ?? 'localhost');
 $basePath = rtrim(dirname(dirname(dirname($_SERVER['SCRIPT_NAME']))), '/\\');
 $returnBase = "{$scheme}://{$host}{$basePath}/carrito.php";
 
@@ -98,6 +98,8 @@ $backUrls = [
     'pending' => $returnBase . '?mp_return=pending&ext_ref=' . urlencode($externalRef)
 ];
 
+$webhookUrl = "{$scheme}://{$host}{$basePath}/api/pagos/webhook_mp.php";
+
 // Llamar a la API Oficial de Mercado Pago si hay credenciales configuradas
 $resPref = crearPreferenciaMercadoPago(
     $carrito,
@@ -105,7 +107,8 @@ $resPref = crearPreferenciaMercadoPago(
     $usuario ?: [],
     $backUrls,
     ($costoEnvio + $propina),
-    $descuentoTotal
+    $descuentoTotal,
+    $webhookUrl
 );
 
 $qrEmvcoUrl = generarQrUrlMercadoPago($totalFinal, 220);

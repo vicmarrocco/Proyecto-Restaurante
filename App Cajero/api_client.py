@@ -38,7 +38,7 @@ class APIClient:
             method='POST'
         )
         try:
-            with urllib.request.urlopen(req, timeout=8) as response:
+            with urllib.request.urlopen(req, timeout=30) as response:
                 body = response.read().decode('utf-8-sig')
                 return json.loads(body)
         except Exception as e:
@@ -52,7 +52,7 @@ class APIClient:
             url = f"{url}?{query}"
         req = urllib.request.Request(url, headers={'User-Agent': 'MostazaDesktopPOS/1.0'})
         try:
-            with urllib.request.urlopen(req, timeout=8) as response:
+            with urllib.request.urlopen(req, timeout=20) as response:
                 body = response.read().decode('utf-8-sig')
                 return json.loads(body)
         except Exception as e:
@@ -61,13 +61,17 @@ class APIClient:
     # ------------------------------------------------------------
     # MÉTODOS DE AUTENTICACIÓN Y CONTROL DE TURNOS
     # ------------------------------------------------------------
-    def solicitar_codigo_gmail(self, email):
-        """Envía el código de 6 dígitos por Gmail al empleado validando rol de Cajero."""
-        return self._post("/auth/solicitar_codigo.php", {"email": email, "app": "cajero"})
+    def listar_cajeros(self):
+        """Perfiles de cajeros activos para elegir en el login."""
+        return self._get("/auth/listar_cajeros.php")
 
-    def verificar_codigo_gmail(self, email, codigo):
+    def solicitar_codigo_gmail(self, email="", idempleado=None):
+        """Envía el código de 6 dígitos por Gmail al empleado validando rol de Cajero."""
+        return self._post("/auth/solicitar_codigo.php", {"email": email, "idempleado": idempleado, "app": "cajero"})
+
+    def verificar_codigo_gmail(self, email, codigo, idempleado=None):
         """Valida el código de 6 dígitos, registra la entrada y devuelve datos del turno."""
-        return self._post("/auth/verificar_codigo.php", {"email": email, "codigo": codigo, "app": "cajero"})
+        return self._post("/auth/verificar_codigo.php", {"email": email, "codigo": codigo, "idempleado": idempleado, "app": "cajero"})
 
     def cerrar_turno(self, idempleado, idregistro_turno=None, observaciones=""):
         """Registra la hora de salida y finaliza el turno del empleado."""
@@ -139,6 +143,19 @@ class APIClient:
             "idempleado": idempleado,
             "rol": rol,
             "detalles": detalles or f"Comanda {nuevo_estado} en mostrador {TERMINAL_NOMBRE}"
+        }
+        return self._post("/pos/pedidos.php", payload)
+
+    def cancelar_pedido_con_devolucion(self, idpedido, motivo="Cancelado por cliente en mostrador", devolver_dinero=True, cajero_nombre="Cajero", idempleado=None, rol="Cajero"):
+        """Cancela un pedido y ejecuta la devolución del dinero (Efectivo o Mercado Pago)."""
+        payload = {
+            "accion": "cancelar",
+            "idpedido": idpedido,
+            "motivo_cancelacion": motivo,
+            "devolver_dinero": devolver_dinero,
+            "cancelado_por": cajero_nombre,
+            "idempleado": idempleado,
+            "rol": rol
         }
         return self._post("/pos/pedidos.php", payload)
 

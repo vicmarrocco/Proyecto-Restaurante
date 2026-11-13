@@ -26,9 +26,24 @@ export default function MesasScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Inicializar en la sección asignada al mesero (1: Salón Principal, 2: Terraza Exterior, etc.)
-  const miSeccionId = mesero?.fk_id_seccion || mesero?.idseccion || 1;
-  const [filtroSeccion, setFiltroSeccion] = useState<number | null>(miSeccionId);
+  // Secciones asignadas al mesero (soporta 1 o 2 sectores simultáneos)
+  const misSeccionesIds: number[] = Array.from(
+    new Set(
+      [
+        mesero?.fk_id_seccion,
+        mesero?.idseccion,
+        mesero?.fk_id_seccion_2,
+        mesero?.idseccion_2,
+        ...(Array.isArray(mesero?.secciones_asignadas) ? mesero.secciones_asignadas : [])
+      ]
+        .map(Number)
+        .filter((n) => !isNaN(n) && n > 0)
+    )
+  );
+  if (misSeccionesIds.length === 0) misSeccionesIds.push(1);
+
+  // Filtro activo: 'mis_sectores' por defecto, 'todas' o idseccion individual
+  const [filtroSeccion, setFiltroSeccion] = useState<number | 'mis_sectores' | 'todas'>('mis_sectores');
 
   // Modal Ticket Rendimiento al Cerrar Turno
   const [modalTurnoVisible, setModalTurnoVisible] = useState(false);
@@ -45,9 +60,46 @@ export default function MesasScreen() {
     setCargandoResumen(false);
   };
 
-  const confirmarCierreDefinitivo = async () => {
-    setModalTurnoVisible(false);
-    await logout();
+  const confirmarCierreDefinitivo = () => {
+    const efectivo = resumenTurno?.rendimiento?.efectivo_a_rendir_formateado || '$0';
+    const montoNum = resumenTurno?.rendimiento?.efectivo_a_rendir || 0;
+
+    const mensaje =
+      montoNum > 0
+        ? `¿Confirmás la entrega de ${efectivo} en efectivo a Caja Central de Mostaza y el cierre de tu turno?\n\nAl confirmar se registrará tu rendición y se cerrará tu sesión.`
+        : `¿Confirmás el cierre de turno y registro de salida?\n\n(No tenés efectivo pendiente a rendir). Al confirmar se cerrará tu sesión.`;
+
+    const ejecutar = async () => {
+      setModalTurnoVisible(false);
+      if (Platform.OS !== 'web') {
+        Alert.alert(
+          '✅ Turno Finalizado',
+          montoNum > 0
+            ? `Se registró la rendición de ${efectivo} a Caja Central.\n\n¡Cierre de sesión completado! Buen descanso.`
+            : `¡Turno concluido con éxito! Buen descanso.`
+        );
+      }
+      await logout();
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(mensaje)) {
+        ejecutar();
+      }
+    } else {
+      Alert.alert(
+        'Rendir Caja y Cerrar Sesión',
+        mensaje,
+        [
+          { text: 'Volver', style: 'cancel' },
+          {
+            text: '✓ Confirmar y Rendir',
+            style: 'destructive',
+            onPress: ejecutar,
+          },
+        ]
+      );
+    }
   };
 
   const cargarMesas = useCallback(async (isRefresh = false) => {
@@ -71,22 +123,38 @@ export default function MesasScreen() {
   const safeMesas = Array.isArray(mesas) ? mesas : [];
   const safeSecciones = Array.isArray(secciones) ? secciones : [];
 
-  const mesasFiltradas = filtroSeccion
-    ? safeMesas.filter((m) => m.idseccion === filtroSeccion)
-    : safeMesas;
+  const mesasFiltradas = filtroSeccion === 'todas'
+    ? safeMesas
+    : filtroSeccion === 'mis_sectores'
+      ? safeMesas.filter((m) => misSeccionesIds.includes(m.idseccion))
+      : safeMesas.filter((m) => m.idseccion === filtroSeccion);
 
-  // Nombre de la sección asignada al mesero
-  const seccionAsignada = safeSecciones.find((s) => s.idseccion === miSeccionId);
-  const seccionAsignadaNombre = mesero?.seccion_nombre || seccionAsignada?.nombre || 'Salón Principal';
-  const rangoMesas = miSeccionId === 1 ? '1 a 8' : miSeccionId === 2 ? '9 a 14' : miSeccionId === 3 ? '15 a 20' : '21 a 24';
+  // Nombre descriptivo de las secciones asignadas al mesero
+  const seccionesNombresArr = safeSecciones
+    .filter((s) => misSeccionesIds.includes(s.idseccion))
+    .map((s) => s.nombre);
+  const seccionAsignadaNombre = seccionesNombresArr.length > 0
+    ? seccionesNombresArr.join(' y ')
+    : mesero?.secciones_nombres || mesero?.seccion_nombre || 'Salón Principal';
+
+  // Mesas en los sectores asignados al mesero
+  const misMesasNums = safeMesas
+    .filter((m) => misSeccionesIds.includes(m.idseccion))
+    .map((m) => m.numero)
+    .sort((a, b) => a - b);
+  const rangoMesas = misMesasNums.length > 0
+    ? misMesasNums.length <= 6
+      ? misMesasNums.map((n) => `#${n}`).join(', ')
+      : `#${misMesasNums[0]} a #${misMesasNums[misMesasNums.length - 1]} (${misMesasNums.length} mesas)`
+    : '1 a 8';
 
   const handleMesaPress = (mesa: Mesa) => {
-    const esMiSeccion = mesa.idseccion === miSeccionId;
+    const esMiSeccion = misSeccionesIds.includes(mesa.idseccion);
 
     if (!esMiSeccion) {
       Alert.alert(
-        '🔒 Mesa Fuera de tu Sección',
-        `La Mesa #${mesa.numero} pertenece a "${mesa.seccion_nombre}".\n\nTu sector asignado es "${seccionAsignadaNombre}".\n\nPor protocolo anticolisión estricto, solo podés gestionar mesas de tu propio sector.`,
+        '🔒 Mesa Fuera de tus Sectores',
+        `La Mesa #${mesa.numero} pertenece a "${mesa.seccion_nombre}".\n\nTus sectores asignados son: "${seccionAsignadaNombre}".\n\nPor protocolo anticolisión estricto, solo podés gestionar mesas de tus sectores habilitados.`,
         [{ text: 'Entendido', style: 'default' }]
       );
       return;
@@ -204,17 +272,17 @@ export default function MesasScreen() {
               Mesas del sector: {rangoMesas} · Prioridad de atención
             </Text>
           </View>
-          {filtroSeccion !== null ? (
+          {filtroSeccion !== 'todas' ? (
             <TouchableOpacity
               style={styles.btnVerTodas}
-              onPress={() => setFiltroSeccion(null)}>
+              onPress={() => setFiltroSeccion('todas')}>
               <Text style={styles.btnVerTodasTxt}>Ver Todas</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
               style={[styles.btnVerTodas, { backgroundColor: MostazaColors.amarillo }]}
-              onPress={() => setFiltroSeccion(miSeccionId)}>
-              <Text style={[styles.btnVerTodasTxt, { color: '#0F172A' }]}>Mi Sector</Text>
+              onPress={() => setFiltroSeccion('mis_sectores')}>
+              <Text style={[styles.btnVerTodasTxt, { color: '#0F172A' }]}>Mis Sectores</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -245,22 +313,31 @@ export default function MesasScreen() {
         <View style={styles.seccionesNav}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsScroll}>
             <TouchableOpacity
-              style={[styles.pill, filtroSeccion === null && styles.pillActive]}
-              onPress={() => setFiltroSeccion(null)}>
-              <Text style={[styles.pillTxt, filtroSeccion === null && styles.pillTxtActive]}>
+              style={[styles.pill, filtroSeccion === 'mis_sectores' && styles.pillActive]}
+              onPress={() => setFiltroSeccion('mis_sectores')}>
+              <Text style={[styles.pillTxt, filtroSeccion === 'mis_sectores' && styles.pillTxtActive]}>
+                ⭐ Mis Sectores ({safeMesas.filter(m => misSeccionesIds.includes(m.idseccion)).length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.pill, filtroSeccion === 'todas' && styles.pillActive]}
+              onPress={() => setFiltroSeccion('todas')}>
+              <Text style={[styles.pillTxt, filtroSeccion === 'todas' && styles.pillTxtActive]}>
                 Todas ({safeMesas.length})
               </Text>
             </TouchableOpacity>
 
             {safeSecciones.map((sec) => {
               const count = safeMesas.filter((m) => m.idseccion === sec.idseccion).length;
+              const esAsignada = misSeccionesIds.includes(sec.idseccion);
               return (
                 <TouchableOpacity
                   key={sec.idseccion}
                   style={[styles.pill, filtroSeccion === sec.idseccion && styles.pillActive]}
                   onPress={() => setFiltroSeccion(sec.idseccion)}>
                   <Text style={[styles.pillTxt, filtroSeccion === sec.idseccion && styles.pillTxtActive]}>
-                    {sec.nombre} ({count})
+                    {sec.nombre} {esAsignada ? '⭐' : ''} ({count})
                   </Text>
                 </TouchableOpacity>
               );
@@ -269,7 +346,13 @@ export default function MesasScreen() {
         </View>
 
         <Text style={styles.sectionTitle}>
-          Mapa de Mesas {filtroSeccion ? `· ${safeSecciones.find(s => s.idseccion === filtroSeccion)?.nombre || ''}` : '· Todas'}
+          Mapa de Mesas {
+            filtroSeccion === 'mis_sectores' 
+              ? `· Mis Sectores (${seccionAsignadaNombre})` 
+              : filtroSeccion === 'todas' 
+                ? '· Todas las Mesas' 
+                : `· ${safeSecciones.find(s => s.idseccion === filtroSeccion)?.nombre || ''}`
+          }
         </Text>
 
         {loading ? (
@@ -282,7 +365,7 @@ export default function MesasScreen() {
         ) : (
           <View style={styles.grid}>
             {mesasFiltradas.map((mesa) => {
-              const esMiSeccion = mesa.idseccion === miSeccionId;
+              const esMiSeccion = misSeccionesIds.includes(mesa.idseccion);
               const esLista = mesa.info?.estado === 'Listo' || mesa.info?.estado === 'Listo para Despacho';
               const meseroAtiende = mesa.mesero_nombre || mesa.info?.mesero_nombre;
 
@@ -446,8 +529,19 @@ export default function MesasScreen() {
                   </View>
                 </View>
 
+                {/* Caja de Rendición de Efectivo */}
+                <View style={styles.rendirTicketBox}>
+                  <Text style={styles.rendirTicketLbl}>💵 EFECTIVO EN MANO A RENDIR</Text>
+                  <Text style={styles.rendirTicketMonto}>
+                    {resumenTurno?.rendimiento?.efectivo_a_rendir_formateado || '$0'}
+                  </Text>
+                  <Text style={styles.rendirTicketSub}>
+                    Cobros en efectivo en mesas a entregar en Caja Central.
+                  </Text>
+                </View>
+
                 <Text style={styles.ticketNotice}>
-                  Al confirmar, se registrará tu hora de salida en el reloj central y se cerrará tu sesión.
+                  Al confirmar, se registrará tu rendición en caja y tu hora de salida en el reloj central.
                 </Text>
               </View>
             )}
@@ -462,7 +556,7 @@ export default function MesasScreen() {
               <TouchableOpacity
                 style={styles.btnModalConfirm}
                 onPress={confirmarCierreDefinitivo}>
-                <Text style={styles.btnModalConfirmTxt}>🚪 Salir y Cerrar Turno</Text>
+                <Text style={styles.btnModalConfirmTxt}>💰 Rendir y Salir</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -651,6 +745,33 @@ const styles = StyleSheet.create({
   metricNum: { fontSize: 17, fontWeight: '900', color: MostazaColors.rojo },
   metricLabel: { fontSize: 10, color: '#64748B', fontWeight: '700', marginTop: 2 },
   metricDivV: { width: 1, backgroundColor: '#CBD5E1' },
+  rendirTicketBox: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    alignItems: 'center',
+  },
+  rendirTicketLbl: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#065F46',
+    letterSpacing: 0.5,
+  },
+  rendirTicketMonto: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#047857',
+    marginVertical: 2,
+  },
+  rendirTicketSub: {
+    fontSize: 10,
+    color: '#065F46',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
   ticketNotice: { fontSize: 11, color: '#94A3B8', textAlign: 'center', fontStyle: 'italic', marginBottom: 14 },
   modalActions: { flexDirection: 'row', gap: 10 },
   btnModalCancel: {

@@ -17,7 +17,7 @@ export const getDefaultApiHost = (): string => {
     }
   }
 
-  return 'http://192.168.0.19/PROYECTO_REST/mostaza_web/api';
+  return 'http://192.168.1.237/PROYECTO_REST/mostaza_web/api';
 };
 
 export const Config = {

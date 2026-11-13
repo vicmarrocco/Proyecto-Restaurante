@@ -163,9 +163,25 @@ class TicketsWindow:
         self.tree.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
 
-        # 4. Botón de Reimpresión
+        # 4. Botones de Acción Inferiores
         btn_f = tk.Frame(self.win, bg=COLOR_LIGHT_BG, padx=14, pady=10)
         btn_f.pack(fill="x")
+
+        btn_cancelar = tk.Button(
+            btn_f,
+            text="❌ Cancelar Ticket y Devolver Dinero",
+            font=(FONT_FAMILY, 10, "bold"),
+            bg="#EF4444",
+            fg=COLOR_WHITE,
+            activebackground="#DC2626",
+            activeforeground=COLOR_WHITE,
+            relief="flat",
+            cursor="hand2",
+            padx=14,
+            pady=8,
+            command=self._cancelar_ticket
+        )
+        btn_cancelar.pack(side="left")
 
         btn_reimprimir = tk.Button(
             btn_f,
@@ -321,6 +337,56 @@ class TicketsWindow:
             command=t_win.destroy
         )
         btn_c.pack(fill="x", pady=(16, 0))
+
+    def _cancelar_ticket(self):
+        sel = self.tree.selection()
+        if not sel:
+            messagebox.showinfo("Selección", "Seleccioná un ticket de la lista para cancelar.", parent=self.win)
+            return
+
+        pid = int(sel[0])
+        p = next((x for x in self.pedidos if x.get("idpedido") == pid), None)
+        if not p:
+            return
+
+        est = p.get("estado", "")
+        if est == "Cancelado":
+            messagebox.showinfo("Ya Cancelado", "Este comprobante ya se encuentra cancelado.", parent=self.win)
+            return
+
+        cli = p.get("cliente", "Consumidor Final")
+        tot = f"${float(p.get('total', 0)):,.0f}".replace(",", ".")
+        met = p.get("metodo_pago", "").upper()
+
+        if not messagebox.askyesno(
+            "Confirmar Cancelación y Reembolso", 
+            f"¿Confirmás la cancelación del ticket #{pid}?\n\nCliente: {cli}\nTotal a reintegrar: {tot} ({met})\n\nEl sistema realizará la devolución contable de dinero automáticamente.", 
+            parent=self.win
+        ):
+            return
+
+        cajero_nom = self.cajero_info.get("nombre_completo", "Cajero")
+        cajero_id = self.cajero_info.get("id")
+
+        def run_cancel():
+            res = api.cancelar_pedido_con_devolucion(
+                pid,
+                motivo="Cancelado desde Historial de Tickets",
+                devolver_dinero=True,
+                cajero_nombre=cajero_nom,
+                idempleado=cajero_id,
+                rol="Cajero"
+            )
+            self.win.after(0, lambda: self._on_cancel_ticket_finish(res))
+
+        threading.Thread(target=run_cancel, daemon=True).start()
+
+    def _on_cancel_ticket_finish(self, res):
+        if res.get("ok"):
+            messagebox.showinfo("Cancelación y Devolución Exitosa", res.get("mensaje", "Ticket cancelado con éxito."), parent=self.win)
+            self._load_tickets()
+        else:
+            messagebox.showerror("Error", res.get("error", "No se pudo cancelar el ticket."), parent=self.win)
 
     def _reimprimir_ticket(self):
         sel = self.tree.selection()

@@ -368,6 +368,22 @@ export const ApiService = {
     }
   },
 
+  async getEstadisticas(): Promise<any> {
+    try {
+      const mesId = currentMesero.idempleado || currentMesero.id || 17;
+      const mesNombre = currentMesero.nombre_completo || currentMesero.nombre || '';
+      const url = `${currentApiUrl}/mesero/estadisticas.php?idempleado=${mesId}&mesero=${encodeURIComponent(mesNombre)}`;
+      const res = await fetchWithTimeout(url, {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  },
+
   async crearPreferenciaMP(
     items: ItemComanda[],
     total: number,

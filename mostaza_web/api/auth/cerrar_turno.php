@@ -65,6 +65,22 @@ $query = "
 $res = $conn->query($query);
 $turnoFinalizado = ($res && $res->num_rows > 0) ? $res->fetch_assoc() : null;
 
+// Si el empleado rinde efectivo al cerrar turno, impactar en Tesorería Central
+$montoRendido = floatval($input['efectivo_rendido'] ?? ($input['monto_rendicion'] ?? 0));
+if ($montoRendido > 0 && $turnoFinalizado) {
+    require_once(__DIR__ . '/../tesoreria/TesoreriaService.php');
+    $nombreEmp = trim($turnoFinalizado['nombre'] . ' ' . $turnoFinalizado['apellido']);
+    $rolEmp = $turnoFinalizado['turno_nombre'] ?: 'Empleado Salón/Delivery';
+    TesoreriaService::ingresarRendicionEmpleado(
+        $conn,
+        $idempleado,
+        $nombreEmp,
+        $rolEmp,
+        $montoRendido,
+        "Rendición de caja al cierre de turno ($observaciones)"
+    );
+}
+
 // Destruir sesión en el servidor
 session_unset();
 session_destroy();

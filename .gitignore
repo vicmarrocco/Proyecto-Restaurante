@@ -1,3 +1,9 @@
-node_modules/ 
-App Cocina/node_modules/ 
-.expo/ 
+node_modules/
+App Cocina/node_modules/
+App Mesero/node_modules/
+delivery/node_modules/
+.expo/
+.env
+cloudflared.exe
+mostaza_web/logs/
+mostaza_web/uploads/

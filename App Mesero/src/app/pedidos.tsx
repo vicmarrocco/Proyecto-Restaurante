@@ -24,19 +24,33 @@ export default function PedidosSalonScreen() {
   const [entregandoId, setEntregandoId] = useState<number | null>(null);
 
   const mesero = ApiService.getCurrentMesero();
-  const miSeccionId = Number(mesero?.fk_id_seccion || 1);
-  const seccionNombre = mesero?.seccion_nombre || (miSeccionId === 1 ? 'Salón Principal' : 'Terraza Exterior');
+  const misSeccionesIds: number[] = Array.from(
+    new Set(
+      [
+        mesero?.fk_id_seccion,
+        mesero?.idseccion,
+        mesero?.fk_id_seccion_2,
+        mesero?.idseccion_2,
+        ...(Array.isArray(mesero?.secciones_asignadas) ? mesero.secciones_asignadas : [])
+      ]
+        .map(Number)
+        .filter((n) => !isNaN(n) && n > 0)
+    )
+  );
+  if (misSeccionesIds.length === 0) misSeccionesIds.push(1);
+
+  const seccionNombre = mesero?.secciones_nombres || mesero?.seccion_nombre || 'Mis Sectores';
 
   const cargarPedidos = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    // Filtrar por la sección asignada al mesero por defecto (Opción A Estricto)
-    const res = await ApiService.getPedidosSalon('todos', filtroSeccion ? miSeccionId : undefined);
+    // Traer comandas y filtrar por las 2 secciones asignadas al mesero
+    const res = await ApiService.getPedidosSalon('todos');
     if (res.ok && Array.isArray(res.pedidos)) {
       setPedidos(res.pedidos);
     }
     setLoading(false);
     if (isRefresh) setRefreshing(false);
-  }, [filtroSeccion, miSeccionId]);
+  }, []);
 
   // Polling continuo en tiempo real cada 3.5 segundos
   useEffect(() => {
@@ -79,20 +93,20 @@ export default function PedidosSalonScreen() {
       if (filtroTipo === 'online' && !p.es_online) return false;
       if (filtroTipo === 'presencial' && p.es_online) return false;
 
-      // Filtro sección del mesero: dinámico usando idseccion de la BD
+      // Filtro de secciones del mesero: dinámico usando idseccion de la BD
       if (filtroSeccion && p.idseccion) {
-        if (Number(p.idseccion) !== miSeccionId) return false;
+        if (!misSeccionesIds.includes(Number(p.idseccion))) return false;
       }
 
       return true;
     });
-  }, [pedidos, filtroTipo, filtroSeccion, miSeccionId]);
+  }, [pedidos, filtroTipo, filtroSeccion, JSON.stringify(misSeccionesIds)]);
 
   // Contadores vivos para los pedidos del sector del mesero
   const pedidosEnSector = useMemo(() => {
     if (!filtroSeccion) return pedidos;
-    return pedidos.filter((p) => !p.idseccion || Number(p.idseccion) === miSeccionId);
-  }, [pedidos, filtroSeccion, miSeccionId]);
+    return pedidos.filter((p) => !p.idseccion || misSeccionesIds.includes(Number(p.idseccion)));
+  }, [pedidos, filtroSeccion, JSON.stringify(misSeccionesIds)]);
 
   const cantOnline = pedidosEnSector.filter((p) => p.es_online && p.estado !== 'Entregado').length;
   const cantPresencial = pedidosEnSector.filter((p) => !p.es_online && p.estado !== 'Entregado').length;
@@ -103,7 +117,7 @@ export default function PedidosSalonScreen() {
     const isEnCocina = ['En Cocina', 'En Preparacion', 'En Preparación'].includes(item.estado);
     const isEntregado = item.estado === 'Entregado';
     const isRecibido = item.estado === 'Recibido';
-    const esMiSeccion = !item.idseccion || Number(item.idseccion) === miSeccionId;
+    const esMiSeccion = !item.idseccion || misSeccionesIds.includes(Number(item.idseccion));
 
     return (
       <View style={[styles.card, isListo && styles.cardListo]}>
@@ -250,15 +264,15 @@ export default function PedidosSalonScreen() {
     <SafeAreaView style={styles.safeArea}>
       {/* Header Superior */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>🍽️ PEDIDOS EN SALÓN</Text>
-          <Text style={styles.headerSub}>Seguimiento y Entrega en Mesa en Tiempo Real</Text>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <Text style={styles.headerTitle} numberOfLines={1}>🍽️ PEDIDOS EN SALÓN</Text>
+          <Text style={styles.headerSub} numberOfLines={1}>Seguimiento y Entrega en Mesa en Tiempo Real</Text>
         </View>
         <TouchableOpacity
           style={[styles.badgeSeccionFiltro, filtroSeccion && styles.badgeSeccionFiltroActivo]}
           onPress={() => setFiltroSeccion(!filtroSeccion)}>
-          <Text style={[styles.badgeSeccionFiltroTxt, filtroSeccion && styles.badgeSeccionFiltroTxtActivo]}>
-            {filtroSeccion ? `📍 Mi Área (${seccionNombre})` : '🌐 Todas las Áreas'}
+          <Text style={[styles.badgeSeccionFiltroTxt, filtroSeccion && styles.badgeSeccionFiltroTxtActivo]} numberOfLines={1}>
+            {filtroSeccion ? '⭐ Mis Sectores' : '🌐 Todas'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -420,6 +434,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    overflow: 'hidden',
     elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.05,

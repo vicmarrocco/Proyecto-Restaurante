@@ -81,6 +81,14 @@ if ($estado === 'Recibido') {
     $porcentajeFill = '100%';
     $statusTitle = '¡Pedido Entregado! ¡Que lo disfrutes!';
     $statusDesc = 'Gracias por elegir Mostaza. ¡Esperamos que disfrutes tu comida!';
+} elseif ($estado === 'Cancelado') {
+    $stepIndex = 0;
+    $porcentajeFill = '0%';
+    $statusTitle = '❌ Pedido Cancelado';
+    $statusDesc = !empty($pedido['motivo_cancelacion']) ? htmlspecialchars($pedido['motivo_cancelacion']) : 'Este pedido ha sido cancelado.';
+    if ($pedido['metodo_pago'] === 'mercadopago' && $pedido['estado_pago'] === 'Reembolsado') {
+        $statusDesc .= ' El reembolso de tu dinero ya fue procesado a través de Mercado Pago.';
+    }
 } else {
     $stepIndex = 1;
     $porcentajeFill = '15%';
@@ -104,6 +112,8 @@ if ($estado === 'Recibido') {
 <link rel="stylesheet" href="style.css?v=<?= filemtime('style.css') ?>">
 <link rel="stylesheet" href="tienda.css?v=<?= filemtime('tienda.css') ?>">
 <link rel="stylesheet" href="checkout.css?v=<?= filemtime('checkout.css') ?>">
+<!-- SweetAlert2 para Alertas y Confirmaciones -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <!-- Leaflet Map para Seguimiento en Vivo -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -367,6 +377,11 @@ if ($estado === 'Recibido') {
 
         <!-- Botones de Acción -->
         <div style="display:flex;gap:12px;margin-top:24px;flex-wrap:wrap;">
+            <?php if (!in_array($estado, ['Entregado', 'Cancelado', 'En Camino', 'Despachado'])): ?>
+                <button type="button" onclick="cancelarPedidoCliente(<?= $pedido['idpedido'] ?>, '<?= htmlspecialchars($pedido['metodo_pago']) ?>', <?= floatval($pedido['total']) ?>)" class="btn-submit-order" style="flex:1;min-width:220px;background:#DC2626;border:none;color:#fff;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:700;cursor:pointer;">
+                    <i class="fa-solid fa-ban"></i> Cancelar Pedido <?= ($pedido['metodo_pago'] === 'mercadopago') ? '(Reembolso MP)' : '' ?>
+                </button>
+            <?php endif; ?>
             <a href="ticket_pdf.php?id=<?= $pedido['idpedido'] ?>" target="_blank" class="btn-submit-order" style="flex:1;background:var(--dark);text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;">
                 <i class="fa-solid fa-file-pdf"></i> Descargar Ticket Fiscal AFIP (PDF)
             </a>
@@ -539,6 +554,75 @@ function consultarEstadoPedidoEnVivo() {
 
 // Iniciar consulta cada 3 segundos
 orderPollingInterval = setInterval(consultarEstadoPedidoEnVivo, 3000);
+
+async function cancelarPedidoCliente(idpedido, metodoPago, monto) {
+    const esMp = (metodoPago === 'mercadopago');
+    const msgConfirm = esMp 
+        ? `¿Estás seguro de que deseás cancelar este pedido?\n\nSe realizará automáticamente el REEMBOLSO de $${monto.toLocaleString('es-AR')} a tu cuenta de Mercado Pago.`
+        : `¿Estás seguro de que deseás cancelar este pedido?`;
+
+    const { value: confirmacion } = await Swal.fire({
+        title: '¿Cancelar Pedido?',
+        html: msgConfirm.replace(/\n/g, '<br>'),
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#DC2626',
+        cancelButtonColor: '#6B7280',
+        confirmButtonText: 'Sí, cancelar pedido',
+        cancelButtonText: 'No, mantener pedido',
+        input: 'text',
+        inputPlaceholder: 'Motivo de cancelación (opcional)...',
+        reverseButtons: true
+    });
+
+    if (confirmacion !== undefined) {
+        Swal.fire({
+            title: esMp ? 'Procesando Reembolso...' : 'Cancelando pedido...',
+            html: esMp ? 'Comunicando con Mercado Pago para devolver tus fondos...' : 'Actualizando estado en sistema...',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        try {
+            const resp = await fetch('api/pedidos/cancelar_pedido_cliente.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    idpedido: idpedido,
+                    motivo: confirmacion || 'Cancelado voluntariamente por el cliente desde la web'
+                })
+            });
+
+            const data = await resp.json();
+
+            if (data.ok) {
+                await Swal.fire({
+                    icon: 'success',
+                    title: '¡Pedido Cancelado!',
+                    text: data.mensaje || 'Tu pedido ha sido cancelado exitosamente.',
+                    confirmButtonColor: '#A30002'
+                });
+                window.location.reload();
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'No se pudo cancelar',
+                    text: data.error || 'Ocurrió un error al procesar la cancelación.',
+                    confirmButtonColor: '#A30002'
+                });
+            }
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error de Conexión',
+                text: 'No se pudo comunicar con el servidor.',
+                confirmButtonColor: '#A30002'
+            });
+        }
+    }
+}
 </script>
 
 </body>

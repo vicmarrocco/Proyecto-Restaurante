@@ -17,19 +17,19 @@ require_once(__DIR__ . '/../../conexion.php');
 $app = strtolower(trim($_GET['app'] ?? ''));
 $rolParam = intval($_GET['rol'] ?? 0);
 
-// Mapeo de roles permitidos por aplicación
+// Mapeo estricto de rol por aplicación (cada app solo muestra perfiles de su propio rol)
 // 1: Cliente, 2: Cajero, 3: Cocinero, 4: Mesero, 5: Administrador, 6: Repartidor
 $rolesPorApp = [
-    'cajero'   => [2, 5],
-    'pos'      => [2, 5],
-    'caja1'    => [2, 5],
-    'caja2'    => [2, 5],
-    'cocina'   => [3, 5],
-    'kds'      => [3, 5],
-    'mesero'   => [4, 5],
-    'salon'    => [4, 5],
-    'delivery' => [6, 5],
-    'rider'    => [6, 5],
+    'cajero'   => [2],
+    'pos'      => [2],
+    'caja1'    => [2],
+    'caja2'    => [2],
+    'cocina'   => [3],
+    'kds'      => [3],
+    'mesero'   => [4],
+    'salon'    => [4],
+    'delivery' => [6],
+    'rider'    => [6],
     'admin'    => [5]
 ];
 
@@ -37,10 +37,10 @@ $rolesPermitidos = [];
 if (!empty($app) && isset($rolesPorApp[$app])) {
     $rolesPermitidos = $rolesPorApp[$app];
 } elseif ($rolParam > 0) {
-    $rolesPermitidos = [$rolParam, 5];
+    $rolesPermitidos = [$rolParam];
 }
 
-$sql = "SELECT e.idempleado, e.nombre, e.apellido, e.dni, e.email, e.fk_id_rol, r.rol, e.avatar, e.vehiculo, e.patente, e.telefono, e.calificacion, e.viajes_totales, e.estado_servicio, e.sucursal_base 
+$sql = "SELECT e.idempleado, e.nombre, e.apellido, e.dni, e.email, e.fk_id_rol, r.rol, e.avatar, e.vehiculo, e.patente, e.telefono, e.calificacion, e.viajes_totales, e.estado_servicio, e.sucursal_base, e.fk_id_seccion, e.fk_id_seccion_2 
         FROM empleado e 
         LEFT JOIN rol r ON e.fk_id_rol = r.idrol 
         WHERE e.activo = 1";
@@ -48,6 +48,10 @@ $sql = "SELECT e.idempleado, e.nombre, e.apellido, e.dni, e.email, e.fk_id_rol, 
 if (!empty($rolesPermitidos)) {
     $rolesIn = implode(',', array_map('intval', $rolesPermitidos));
     $sql .= " AND e.fk_id_rol IN ($rolesIn)";
+}
+
+if ($app === 'mesero' || $app === 'salon') {
+    $sql .= " AND e.email NOT LIKE '%cajero%'";
 }
 
 $sql .= " ORDER BY e.fk_id_rol ASC, e.idempleado ASC";
@@ -74,7 +78,10 @@ if ($res) {
             'calificacion' => floatval($r['calificacion'] ?? 4.95),
             'viajes_totales' => intval($r['viajes_totales'] ?? 0),
             'estado_servicio' => $r['estado_servicio'] ?: 'Disponible',
-            'sucursal_base' => $r['sucursal_base'] ?: 'Mostaza Formosa Centro'
+            'sucursal_base' => $r['sucursal_base'] ?: 'Mostaza Formosa Centro',
+            'fk_id_seccion' => (int)($r['fk_id_seccion'] ?? 1),
+            'fk_id_seccion_2' => !empty($r['fk_id_seccion_2']) ? (int)$r['fk_id_seccion_2'] : null,
+            'secciones_asignadas' => array_values(array_filter([(int)($r['fk_id_seccion'] ?? 1), !empty($r['fk_id_seccion_2']) ? (int)$r['fk_id_seccion_2'] : null]))
         ];
     }
 }

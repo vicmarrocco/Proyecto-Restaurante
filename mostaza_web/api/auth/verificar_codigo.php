@@ -18,6 +18,20 @@ require_once(__DIR__ . '/../../conexion.php');
 
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
 $email = htmlspecialchars(trim($input['email'] ?? ''));
+
+// Login por perfil: si llega idempleado (o si el email está enmascarado con ***), se resuelve el correo real en el servidor.
+$idempleadoPerfil = intval($input['idempleado'] ?? 0);
+if ($idempleadoPerfil > 0 || empty($email) || strpos($email, '***') !== false) {
+    if ($idempleadoPerfil > 0) {
+        $q = $conn->prepare("SELECT email FROM empleado WHERE idempleado = ? AND activo = 1 LIMIT 1");
+        $q->bind_param("i", $idempleadoPerfil);
+        $q->execute();
+        $fila = $q->get_result()->fetch_assoc();
+        if ($fila && !empty($fila['email'])) {
+            $email = $fila['email'];
+        }
+    }
+}
 $codigo = htmlspecialchars(trim($input['codigo'] ?? ''));
 $app = strtolower(trim($input['app'] ?? 'cajero'));
 
@@ -152,13 +166,28 @@ $_SESSION['mesero_idregistro'] = $idregistro_turno;
 
 $nombreCompleto = $emp['nombre'] . ' ' . $emp['apellido'];
 
-// Obtener sección asignada para meseros
-$idSeccion = (int)($emp['fk_id_seccion'] ?? 1);
-$seccionNombre = 'Salón Principal';
-$resSec = $conn->query("SELECT nombre FROM seccion_mesa WHERE idseccion = $idSeccion LIMIT 1");
-if ($resSec && $rowSec = $resSec->fetch_assoc()) {
-    $seccionNombre = $rowSec['nombre'];
+// Obtener secciones asignadas para meseros (soporta 2 secciones simultáneas)
+$idSeccion1 = (int)($emp['fk_id_seccion'] ?? 1);
+$idSeccion2 = !empty($emp['fk_id_seccion_2']) ? (int)$emp['fk_id_seccion_2'] : null;
+
+$seccionNombre1 = 'Salón Principal';
+$seccionNombre2 = null;
+$seccionesAsignadas = [$idSeccion1];
+
+$resSec1 = $conn->query("SELECT nombre FROM seccion_mesa WHERE idseccion = $idSeccion1 LIMIT 1");
+if ($resSec1 && $rowSec1 = $resSec1->fetch_assoc()) {
+    $seccionNombre1 = $rowSec1['nombre'];
 }
+
+if ($idSeccion2) {
+    $resSec2 = $conn->query("SELECT nombre FROM seccion_mesa WHERE idseccion = $idSeccion2 LIMIT 1");
+    if ($resSec2 && $rowSec2 = $resSec2->fetch_assoc()) {
+        $seccionNombre2 = $rowSec2['nombre'];
+        $seccionesAsignadas[] = $idSeccion2;
+    }
+}
+
+$seccionesNombres = $seccionNombre2 ? "{$seccionNombre1} y {$seccionNombre2}" : $seccionNombre1;
 
 $empleadoData = [
     'id' => (int)$emp['idempleado'],
@@ -178,9 +207,14 @@ $empleadoData = [
     'calificacion' => floatval($emp['calificacion'] ?? 4.95),
     'viajes_totales' => intval($emp['viajes_totales'] ?? 0),
     'estado_servicio' => $emp['estado_servicio'] ?: 'Disponible',
-    'fk_id_seccion' => $idSeccion,
-    'idseccion' => $idSeccion,
-    'seccion_nombre' => $seccionNombre,
+    'fk_id_seccion' => $idSeccion1,
+    'fk_id_seccion_2' => $idSeccion2,
+    'idseccion' => $idSeccion1,
+    'idseccion_2' => $idSeccion2,
+    'seccion_nombre' => $seccionNombre1,
+    'seccion_nombre_2' => $seccionNombre2,
+    'secciones_nombres' => $seccionesNombres,
+    'secciones_asignadas' => $seccionesAsignadas,
     'idregistro_turno' => $idregistro_turno,
     'idturno' => $idturno,
     'turno' => $nombreTurno,

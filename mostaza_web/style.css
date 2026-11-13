@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
 
    style.css
 
@@ -32,17 +32,17 @@
 
   --dark-element: #374151;
 
-  --crema: #FAF6ED;
+  --crema: #ECE3D0;
 
-  --gray-bg: #F4EFE6;
+  --gray-bg: #E2D6BE;
 
   --text-main: #1A1A1A;
 
   --text-muted: #555555;
 
-  --border: #E8DFD1;
+  --border: #CFC0A6;
 
-  --border-light: #F4ECE0;
+  --border-light: #E5DBC8;
 
   --success: #10B981;
 
@@ -350,9 +350,13 @@ ul {
 
   align-items: center;
 
-  flex-shrink: 1;
+  justify-content: center;
+
+  flex: 1 1 auto;
 
   min-width: 0;
+
+  overflow: hidden;
 
 }
 
@@ -448,6 +452,20 @@ ul {
 
 /* Header Actions */
 
+.header-right-group {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 10px;
+
+  flex-shrink: 0;
+
+}
+
+
+
 .header-actions {
 
   display: flex;
@@ -462,13 +480,15 @@ ul {
 
 
 
-/* Adaptabilidad para Pantallas Medianas, Laptops y FullHD (1024px a 1440px) */
+/* Adaptabilidad para Pantallas Medianas, Laptops y FullHD (1141px a 1380px) */
 
-@media (min-width: 1024px) and (max-width: 1440px) {
+@media (min-width: 1141px) and (max-width: 1380px) {
 
   .main-header {
 
     padding: 8px 1.5%;
+
+    gap: 10px;
 
   }
 
@@ -488,21 +508,19 @@ ul {
 
   .brand-sub {
 
-    font-size: 0.5rem;
-
-    letter-spacing: 0.8px;
+    display: none;
 
   }
 
   .desktop-nav ul {
 
-    gap: 4px;
+    gap: 6px;
 
   }
 
   .desktop-nav a {
 
-    font-size: 0.76rem;
+    font-size: 0.8rem;
 
     padding: 4px 6px;
 
@@ -512,7 +530,7 @@ ul {
 
   .desktop-nav a i {
 
-    display: none; /* Oculta íconos de links en laptops para ahorrar valioso ancho */
+    display: none;
 
   }
 
@@ -523,6 +541,87 @@ ul {
   }
 
   .btn-cart-header {
+
+    padding: 0 !important;
+
+    border: none !important;
+
+    background: transparent !important;
+
+    box-shadow: none !important;
+
+  }
+
+  .badge-club-header {
+
+    padding: 6px 9px;
+
+    font-size: 0.72rem;
+
+  }
+
+  .btn-user-avatar {
+
+    padding: 5px 8px;
+
+    font-size: 0.76rem;
+
+  }
+
+}
+
+
+
+/* Colapso Responsivo Automático a Móvil/Tablet bajo 1140px */
+
+@media (max-width: 1140px) {
+
+  .desktop-nav {
+
+    display: none !important;
+
+  }
+
+  .mobile-toggle-btn {
+
+    display: flex !important;
+
+  }
+
+  .cart-text-wrap {
+
+    display: none !important;
+
+  }
+
+  .btn-cart-header {
+
+    padding: 0 !important;
+
+    border: none !important;
+
+    background: transparent !important;
+
+    box-shadow: none !important;
+
+  }
+
+}
+
+
+
+@media (min-width: 1141px) {
+
+  .mobile-toggle-btn {
+
+    display: none !important;
+
+  }
+
+}
+
+
+.btn-cart-header {
 
     padding: 4px 8px;
 
@@ -2156,9 +2255,9 @@ ul {
 
   border-radius: var(--radius-lg);
 
-  border: 1px solid var(--border);
+  border: 1.5px solid #D2C3A8;
 
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.09), 0 3px 8px rgba(15, 23, 42, 0.05);
 
   overflow: hidden;
 
@@ -2176,9 +2275,9 @@ ul {
 
   transform: translateY(-6px);
 
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 18px 36px rgba(163, 0, 2, 0.16), 0 6px 14px rgba(15, 23, 42, 0.08);
 
-  border-color: #CBD5E1;
+  border-color: var(--amarillo);
 
 }
 

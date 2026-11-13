@@ -10,10 +10,11 @@ from config import *
 from api_client import api
 
 class ArqueoWindow:
-    def __init__(self, parent, cajero_info, on_update=None):
+    def __init__(self, parent, cajero_info, on_update=None, on_cierre_definitivo=None):
         self.parent = parent
         self.cajero_info = cajero_info
         self.on_update = on_update
+        self.on_cierre_definitivo = on_cierre_definitivo
 
         self.win = tk.Toplevel(parent)
         self.win.title(f"Arqueo y Control de Caja · {TERMINAL_NOMBRE} · Mostaza POS")
@@ -142,17 +143,15 @@ class ArqueoWindow:
         metricas = [
             ("💵 Fondo Inicial", f"${int(monto_ini):,}"),
             ("💰 Ventas Efectivo", f"${int(ventas_ef):,}"),
-            ("💳 Ventas Tarjetas POS", f"${int(c.get('ventas_tarjeta', 0)):,}"),
             ("📱 Ventas Mercado Pago", f"${int(c.get('ventas_mercadopago', 0)):,}"),
-            ("🏦 Ventas Transferencia", f"${int(c.get('ventas_transferencia', 0)):,}"),
             ("💸 Retiros a Tesorería", f"${int(monto_retiros):,}"),
             ("⭐ Recaudación Total", f"${int(c.get('total_ventas', 0)):,}"),
             ("🧾 Total Transacciones", f"{c.get('total_transacciones', 0)} tickets")
         ]
 
         for idx, (lbl, val) in enumerate(metricas):
-            r = idx // 4
-            col = idx % 4
+            r = idx // 3
+            col = idx % 3
             box = tk.Frame(grid_m, bg="#F8FAFC", padx=8, pady=6, relief="solid", bd=1)
             box.grid(row=r, column=col, padx=3, pady=3, sticky="nsew")
             tk.Label(box, text=lbl, font=(FONT_FAMILY, 7, "bold"), fg=COLOR_TEXT_MUTED, bg="#F8FAFC").pack(anchor="w")
@@ -164,7 +163,7 @@ class ArqueoWindow:
                 fg=col_txt, bg="#F8FAFC"
             ).pack(anchor="w")
 
-        for i in range(4): grid_m.columnconfigure(i, weight=1)
+        for i in range(3): grid_m.columnconfigure(i, weight=1)
 
         # Botones de Acciones Operativas (Sangría & Cierre X)
         ops_frame = tk.Frame(card, bg=COLOR_WHITE)
@@ -425,9 +424,7 @@ TOTAL OPERACIONES:     {r.get('total_transacciones', 0)} comprobantes
 DESGLOSE POR MEDIO DE PAGO:
 (+) Fondo Inicial Apertura:     ${int(r.get('monto_inicial', 0)):>13,d}
 (+) Ventas Efectivo:            ${int(r.get('ventas_efectivo', 0)):>13,d}
-(+) Ventas Tarjetas Déb/Créd:   ${int(r.get('ventas_tarjeta', 0)):>13,d}
 (+) Ventas Mercado Pago QR:     ${int(r.get('ventas_mercadopago', 0)):>13,d}
-(+) Ventas Transferencia:       ${int(r.get('ventas_transferencia', 0)):>13,d}
 --------------------------------------------------
 TOTAL FACTURADO DEL TURNO:      ${int(r.get('total_ventas', 0)):>13,d}
 --------------------------------------------------
@@ -448,11 +445,28 @@ FIRMA FISCAL: {r.get('firma_digital', 'MOSTAZA-AFIP-OK')}
         t_box.config(state="disabled")
         t_box.pack(fill="both", expand=True)
 
-        btn_c = tk.Button(
-            paper, text="✓ Cerrar Vista de Informe", font=(FONT_FAMILY, 9, "bold"),
-            bg=COLOR_ROJO, fg=COLOR_WHITE, relief="flat", cursor="hand2", command=z_win.destroy
-        )
-        btn_c.pack(fill="x", pady=(8, 0))
+        if not es_cierre_x:
+            def _finalizar_cierre():
+                z_win.destroy()
+                try:
+                    self.win.destroy()
+                except Exception:
+                    pass
+                if self.on_cierre_definitivo:
+                    self.on_cierre_definitivo()
+
+            z_win.protocol("WM_DELETE_WINDOW", _finalizar_cierre)
+            btn_c = tk.Button(
+                paper, text="✓ Aceptar Informe y Cerrar Sesión (Volver al Login)", font=(FONT_FAMILY, 9, "bold"),
+                bg="#16A34A", fg=COLOR_WHITE, relief="flat", cursor="hand2", pady=8, command=_finalizar_cierre
+            )
+            btn_c.pack(fill="x", pady=(8, 0))
+        else:
+            btn_c = tk.Button(
+                paper, text="✓ Cerrar Vista de Informe", font=(FONT_FAMILY, 9, "bold"),
+                bg=COLOR_ROJO, fg=COLOR_WHITE, relief="flat", cursor="hand2", command=z_win.destroy
+            )
+            btn_c.pack(fill="x", pady=(8, 0))
 
     # ------------------------------------------------------------
     # TAB HISTORIAL DE TURNOS

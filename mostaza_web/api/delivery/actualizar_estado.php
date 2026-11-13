@@ -45,7 +45,15 @@ try {
         $stmtChk->execute();
         $pRep = $stmtChk->get_result()->fetch_assoc();
         if ($pRep) {
-            if ($pRep['estado'] === 'En Camino' && !empty($pRep['idempleado_repartidor']) && $idEmpleado && intval($pRep['idempleado_repartidor']) !== intval($idEmpleado)) {
+            $estActual = trim($pRep['estado']);
+            if ($estActual !== 'Listo' && $estActual !== 'Listo para Despacho') {
+                echo json_encode([
+                    'ok' => false,
+                    'error' => "El pedido #$idpedido todavía está en preparación ($estActual). Solo podés tomarlo cuando cocina lo marque como 'Listo para Despacho'."
+                ]);
+                exit();
+            }
+            if ($estActual === 'En Camino' && !empty($pRep['idempleado_repartidor']) && $idEmpleado && intval($pRep['idempleado_repartidor']) !== intval($idEmpleado)) {
                 echo json_encode([
                     'ok' => false,
                     'error' => "El pedido #$idpedido ya fue tomado por el repartidor {$pRep['repartidor_asignado']}."

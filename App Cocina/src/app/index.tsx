@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ApiService } from '@/services/api';
+import { ApiService, parseFechaUniversal } from '@/services/api';
 import { ComandaCocina } from '@/types/cocina';
 import { MostazaColors } from '@/constants/Colors';
 import { useAuth } from '@/context/AuthContext';
@@ -180,9 +180,11 @@ export default function KdsScreen() {
     await logout();
   };
 
-  // Formateador de tiempo transcurrido en vivo (MM:SS)
+  // Formateador de tiempo transcurrido en vivo (MM:SS) universal
   const formatearTiempoTranscurrido = (fechaStr: string) => {
-    const diffMs = Math.max(0, Date.now() - new Date(fechaStr).getTime());
+    const d = parseFechaUniversal(fechaStr);
+    if (!d) return '00:00';
+    const diffMs = Math.max(0, Date.now() - d.getTime());
     const totalSegs = Math.floor(diffMs / 1000);
     const mins = Math.floor(totalSegs / 60);
     const segs = totalSegs % 60;
@@ -190,7 +192,9 @@ export default function KdsScreen() {
   };
 
   const getSlaColor = (fechaStr: string) => {
-    const mins = Math.floor((Date.now() - new Date(fechaStr).getTime()) / 60000);
+    const d = parseFechaUniversal(fechaStr);
+    if (!d) return '#10B981';
+    const mins = Math.floor((Date.now() - d.getTime()) / 60000);
     if (mins < 5) return '#10B981'; // Verde
     if (mins < 10) return '#F59E0B'; // Amarillo
     return '#DC2626'; // Rojo crítico (>10 min)
@@ -297,13 +301,15 @@ export default function KdsScreen() {
                     </Text>
                   </View>
 
-                  {/* Temporizador SLA en vivo */}
+                  {/* Temporizador SLA en vivo y Estado */}
                   <View style={styles.timerRow}>
-                    <Text style={[styles.timerTxt, { color: colorSla }]}>
-                      ⏱️ Tiempo: {tiempoVivo} min
+                    <Text style={[styles.timerTxt, { color: colorSla }]} numberOfLines={1}>
+                      ⏱️ {tiempoVivo} min
                     </Text>
                     {esMiComanda && (
-                      <Text style={styles.badgePrep}>EN PLANCHA</Text>
+                      <View style={styles.badgePrep}>
+                        <Text style={styles.badgePrepTxt}>EN PLANCHA</Text>
+                      </View>
                     )}
                   </View>
 
@@ -503,25 +509,57 @@ const styles = StyleSheet.create({
   emptyCard: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 30, alignItems: 'center', marginTop: 30, borderWidth: 1, borderColor: '#E2E8F0' },
   emptyTitle: { fontSize: 18, fontWeight: '900', color: '#0F172A' },
   emptySub: { fontSize: 12, color: '#64748B', marginTop: 4, textAlign: 'center' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   kdsCard: {
     width: '48%',
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
-    padding: 14,
+    padding: 10,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
+    overflow: 'hidden',
     shadowColor: '#000000',
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 2,
   },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  comandaNum: { fontSize: 18, fontWeight: '900', color: MostazaColors.rojo },
-  tipoBadge: { backgroundColor: '#FEF3C7', color: '#92400E', fontSize: 10, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  timerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  timerTxt: { fontSize: 11, fontWeight: '900' },
-  badgePrep: { fontSize: 9, fontWeight: '900', backgroundColor: '#FEF3C7', color: '#B45309', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 4 },
+  comandaNum: { fontSize: 17, fontWeight: '900', color: MostazaColors.rojo },
+  tipoBadge: {
+    backgroundColor: '#FEF3C7',
+    color: '#92400E',
+    fontSize: 9.5,
+    fontWeight: '800',
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    overflow: 'hidden',
+    maxWidth: '55%',
+  },
+  timerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 6,
+  },
+  timerTxt: { fontSize: 10.5, fontWeight: '800', flexShrink: 1 },
+  badgePrep: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  badgePrepTxt: {
+    fontSize: 8.5,
+    fontWeight: '900',
+    color: '#B45309',
+    letterSpacing: 0.2,
+  },
   itemsBox: { backgroundColor: '#F8FAFC', borderRadius: 10, padding: 10, marginTop: 8, minHeight: 90, borderWidth: 1, borderColor: '#F1F5F9' },
   itemRow: { marginBottom: 6 },
   itemTxt: { color: '#0F172A', fontSize: 12, fontWeight: '700' },

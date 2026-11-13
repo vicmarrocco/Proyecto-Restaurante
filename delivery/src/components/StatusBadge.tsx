@@ -89,18 +89,20 @@ const styles = StyleSheet.create({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 20,
     alignSelf: 'flex-start',
+    flexShrink: 0,
   },
   icon: {
-    fontSize: 12,
-    marginRight: 5,
+    fontSize: 11,
+    marginRight: 4,
   },
   text: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
+    flexShrink: 0,
   },
   payContainer: {
     padding: 10,

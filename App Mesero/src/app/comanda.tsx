@@ -22,8 +22,22 @@ export default function ComandaScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const mesero = ApiService.getCurrentMesero();
-  const miSeccionId = Number(mesero?.fk_id_seccion || mesero?.idseccion || 1);
-  const seccionNombre = mesero?.seccion_nombre || (miSeccionId === 1 ? 'Salón Principal' : 'Terraza Exterior');
+  const misSeccionesIds: number[] = Array.from(
+    new Set(
+      [
+        mesero?.fk_id_seccion,
+        mesero?.idseccion,
+        mesero?.fk_id_seccion_2,
+        mesero?.idseccion_2,
+        ...(Array.isArray(mesero?.secciones_asignadas) ? mesero.secciones_asignadas : [])
+      ]
+        .map(Number)
+        .filter((n) => !isNaN(n) && n > 0)
+    )
+  );
+  if (misSeccionesIds.length === 0) misSeccionesIds.push(1);
+
+  const seccionNombre = mesero?.secciones_nombres || mesero?.seccion_nombre || 'Mis Sectores Asignados';
 
   const [mesaNum, setMesaNum] = useState<number>(Number(params.mesa || 1));
   const [mesasDeMiSeccion, setMesasDeMiSeccion] = useState<number[]>([]);
@@ -62,7 +76,7 @@ export default function ComandaScreen() {
       const resMesas = await ApiService.getMesas();
       if (resMesas.ok && Array.isArray(resMesas.mesas)) {
         const misMesas = resMesas.mesas
-          .filter((m) => m.idseccion === miSeccionId)
+          .filter((m) => misSeccionesIds.includes(m.idseccion))
           .map((m) => m.numero);
         setMesasDeMiSeccion(misMesas);
         if (misMesas.length > 0 && !misMesas.includes(mesaNum)) {
@@ -72,7 +86,7 @@ export default function ComandaScreen() {
       setLoading(false);
     };
     cargar();
-  }, [miSeccionId]);
+  }, [JSON.stringify(misSeccionesIds)]);
 
   const safeProductos = Array.isArray(productos) ? productos : [];
   const categorias = ['Todas', ...Array.from(new Set(safeProductos.map((p) => p.categoria).filter(Boolean)))];
@@ -187,9 +201,9 @@ export default function ComandaScreen() {
       return;
     }
 
-    // Validación Anticolisión de Sección
+    // Validación Anticolisión de Secciones Asignadas
     if (mesasDeMiSeccion.length > 0 && !mesasDeMiSeccion.includes(mesaNum)) {
-      Alert.alert('Bloqueo Anticolisión', `La Mesa #${mesaNum} no pertenece a tu sector asignado (${seccionNombre}). Solo podés marchar comandas de tu sector.`);
+      Alert.alert('Bloqueo Anticolisión', `La Mesa #${mesaNum} no pertenece a tus sectores asignados (${seccionNombre}). Solo podés marchar comandas de tus sectores habilitados.`);
       return;
     }
 
@@ -223,23 +237,24 @@ export default function ComandaScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>📝 COMANDA DE SALÓN</Text>
-          <Text style={styles.headerSub}>Atención por {mesero?.nombre || 'Mesero'}</Text>
+        <View style={{ flex: 1, paddingRight: 10 }}>
+          <Text style={styles.headerTitle} numberOfLines={1}>📝 COMANDA DE SALÓN</Text>
+          <Text style={styles.headerSub} numberOfLines={1}>
+            🤵 {mesero?.nombre_completo || mesero?.nombre || 'Mesero'} · {seccionNombre}
+          </Text>
         </View>
 
-        <View style={styles.mesaSelector}>
-          <Text style={styles.mesaLbl}>{seccionNombre.toUpperCase()}</Text>
-          <View style={styles.mesaBadgeBox}>
-            <Text style={styles.mesaBadgeTxt}>Mesa #{mesaNum}</Text>
-          </View>
+        <View style={styles.mesaBadgeBox}>
+          <Text style={styles.mesaBadgeTxt}>Mesa #{mesaNum}</Text>
         </View>
       </View>
 
       {/* Selector de Mesas de su Sector */}
       {mesasDeMiSeccion.length > 0 && (
         <View style={styles.sectorBar}>
-          <Text style={styles.sectorBarTitle}>📍 Mesas asignadas a tu sector:</Text>
+          <Text style={styles.sectorBarTitle}>
+            📍 Mesas de tu sector ({seccionNombre}):
+          </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sectorScroll}>
             {mesasDeMiSeccion.map((num) => (
               <TouchableOpacity

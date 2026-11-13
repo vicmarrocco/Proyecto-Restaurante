@@ -13,7 +13,6 @@ export default function AppTabs() {
 
   const tabs = [
     { name: 'Disponibles', path: '/', icon: '📦' },
-    { name: 'En Curso', path: '/activo', icon: '🛵' },
     { name: 'Historial', path: '/historial', icon: '📊' },
     { name: 'Mi Turno', path: '/perfil', icon: '👤' },
   ];

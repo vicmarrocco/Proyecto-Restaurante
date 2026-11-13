@@ -6,14 +6,121 @@
 session_start();
 require_once(__DIR__ . '/conexion.php');
 
+// Función de respaldo en caso de que no esté declarada globalmente
+if (!function_exists('registrarAuditoriaPedido')) {
+    function registrarAuditoriaPedido($conn, $idpedido, $nuevoEstado, $accion, $rol, $nombre, $idEmpleado, $motivo = '') {
+        $idpedido = intval($idpedido);
+        if ($idpedido <= 0) return false;
+        $stmtP = $conn->prepare("SELECT estado FROM pedido_web WHERE idpedido = ?");
+        $stmtP->bind_param("i", $idpedido);
+        $stmtP->execute();
+        $p = $stmtP->get_result()->fetch_assoc();
+        $estadoAnterior = $p['estado'] ?? 'Recibido';
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+        $stmtAud = $conn->prepare("INSERT INTO pedido_auditoria (idpedido, estado_anterior, estado_nuevo, accion, rol_responsable, idempleado, nombre_responsable, detalles, ip_origen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        if ($stmtAud) {
+            $stmtAud->bind_param("issssisss", $idpedido, $estadoAnterior, $nuevoEstado, $accion, $rol, $idEmpleado, $nombre, $motivo, $ip);
+            $stmtAud->execute();
+        }
+        $conn->query("UPDATE pedido_web SET estado = '" . $conn->real_escape_string($nuevoEstado) . "' WHERE idpedido = $idpedido");
+        return true;
+    }
+}
+
+// ============================================================
+// ADMINISTRACIÓN: ASIGNAR MÚLTIPLES SECTORES AL MESERO
+// ============================================================
+if (isset($_POST['guardar_sectores_mesero'])) {
+    $idEmpMesero = intval($_POST['idempleado'] ?? 0);
+    $sectoresSeleccionados = isset($_POST['sectores']) && is_array($_POST['sectores']) ? array_values(array_filter(array_map('intval', $_POST['sectores']))) : [];
+
+    if ($idEmpMesero > 0) {
+        if (empty($sectoresSeleccionados)) {
+            header("Location: mesero.php?msg=error_sin_sector&panel=sectores");
+            exit();
+        }
+
+        // Limpiar sectores anteriores y asignar todos los nuevos seleccionados
+        $stmtDel = $conn->prepare("DELETE FROM empleado_seccion WHERE idempleado = ?");
+        $stmtDel->bind_param("i", $idEmpMesero);
+        $stmtDel->execute();
+
+        $stmtIns = $conn->prepare("INSERT IGNORE INTO empleado_seccion (idempleado, idseccion) VALUES (?, ?)");
+        foreach ($sectoresSeleccionados as $idSec) {
+            $stmtIns->bind_param("ii", $idEmpMesero, $idSec);
+            $stmtIns->execute();
+        }
+
+        // Actualizar fk_id_seccion principal con el primer sector seleccionado para compatibilidad
+        $secPrincipal = intval($sectoresSeleccionados[0]);
+        $stmtUpdEmp = $conn->prepare("UPDATE empleado SET fk_id_seccion = ? WHERE idempleado = ?");
+        $stmtUpdEmp->bind_param("ii", $secPrincipal, $idEmpMesero);
+        $stmtUpdEmp->execute();
+
+        // Si el mesero editado es el que está en sesión actual, actualizar su sesión
+        if (!empty($_SESSION['mesero_id']) && intval($_SESSION['mesero_id']) === $idEmpMesero) {
+            $infoActualizada = obtenerSeccionesMesero($conn, $idEmpMesero);
+            $_SESSION['mesero_secciones'] = $infoActualizada['ids'];
+            $_SESSION['mesero_seccion_nombre'] = $infoActualizada['texto'];
+        }
+
+        header("Location: mesero.php?msg=sectores_actualizados&panel=sectores");
+        exit();
+    }
+}
+
+// Crear nuevo mesero desde el panel admin con múltiples sectores
+if (isset($_POST['crear_nuevo_mesero'])) {
+    $nom = trim($_POST['nombre'] ?? '');
+    $ape = trim($_POST['apellido'] ?? '');
+    $emailM = trim($_POST['email'] ?? '');
+    $telM = trim($_POST['telefono'] ?? '');
+    $sectoresNuevos = isset($_POST['sectores']) && is_array($_POST['sectores']) ? array_values(array_filter(array_map('intval', $_POST['sectores']))) : [1];
+    if (empty($sectoresNuevos)) $sectoresNuevos = [1];
+
+    if (!empty($nom) && !empty($emailM)) {
+        $secPrin = intval($sectoresNuevos[0]);
+        $stmtNewM = $conn->prepare("INSERT INTO empleado (nombre, apellido, email, telefono, fk_id_rol, fk_id_seccion, avatar, activo) VALUES (?, ?, ?, ?, 4, ?, '🤵', 1)");
+        if ($stmtNewM) {
+            $stmtNewM->bind_param("ssssi", $nom, $ape, $emailM, $telM, $secPrin);
+            if ($stmtNewM->execute()) {
+                $newIdEmp = $stmtNewM->insert_id;
+                $stmtInsS = $conn->prepare("INSERT IGNORE INTO empleado_seccion (idempleado, idseccion) VALUES (?, ?)");
+                foreach ($sectoresNuevos as $sId) {
+                    $stmtInsS->bind_param("ii", $newIdEmp, $sId);
+                    $stmtInsS->execute();
+                }
+                header("Location: mesero.php?msg=mesero_creado&panel=sectores");
+                exit();
+            }
+        }
+    }
+    header("Location: mesero.php?msg=error_crear_mesero&panel=sectores");
+    exit();
+}
+
 // Identificación del mesero
 if (isset($_POST['login_mesero'])) {
+    $idEmpSel = intval($_POST['idempleado_mesero'] ?? 0);
     $nombre = trim($_POST['nombre_mesero'] ?? 'Mesero de Turno');
+
+    if ($idEmpSel > 0) {
+        $resEM = $conn->query("SELECT idempleado, nombre, apellido FROM empleado WHERE idempleado = $idEmpSel LIMIT 1");
+        if ($resEM && $rowEM = $resEM->fetch_assoc()) {
+            $nombre = trim($rowEM['nombre'] . ' ' . $rowEM['apellido']);
+            $_SESSION['mesero_id'] = intval($rowEM['idempleado']);
+            $infoSecLogin = obtenerSeccionesMesero($conn, $idEmpSel);
+            $_SESSION['mesero_secciones'] = $infoSecLogin['ids'];
+            $_SESSION['mesero_seccion_nombre'] = $infoSecLogin['texto'];
+        }
+    }
     $_SESSION['mesero_nombre'] = $nombre;
     
     // Registro de entrada
-    $stmtReg = $conn->prepare("INSERT INTO registro_turno_empleado (fecha, hora_entrada, estado, origen) VALUES (CURDATE(), NOW(), 'Activo', 'Mesero Web')");
+    $idEmpReg = $_SESSION['mesero_id'] ?? 1;
+    $stmtReg = $conn->prepare("INSERT INTO registro_turno_empleado (fk_id_empleado, fk_id_turno, fecha, hora_entrada, estado, origen) VALUES (?, 1, CURDATE(), NOW(), 'Activo', 'Mesero Web')");
     if ($stmtReg) {
+        $stmtReg->bind_param("i", $idEmpReg);
         $stmtReg->execute();
         $_SESSION['mesero_idregistro'] = $stmtReg->insert_id;
     }
@@ -26,7 +133,7 @@ if (isset($_GET['cerrar_turno'])) {
     if (!empty($_SESSION['mesero_idregistro'])) {
         $conn->query("UPDATE registro_turno_empleado SET estado = 'Finalizado', hora_salida = NOW() WHERE idregistro = " . intval($_SESSION['mesero_idregistro']));
     }
-    unset($_SESSION['mesero_nombre'], $_SESSION['mesero_idregistro']);
+    unset($_SESSION['mesero_nombre'], $_SESSION['mesero_id'], $_SESSION['mesero_idregistro'], $_SESSION['mesero_secciones'], $_SESSION['mesero_seccion_nombre']);
     header("Location: mesero.php");
     exit();
 }
@@ -102,6 +209,38 @@ if (isset($_POST['crear_comanda_mesa'])) {
 
 $meseroLogueado = !empty($_SESSION['mesero_nombre']);
 $nombreMesero = $_SESSION['mesero_nombre'] ?? 'Mesero de Turno';
+$sectoresMeseroSesion = $_SESSION['mesero_seccion_nombre'] ?? 'Todos los Sectores';
+
+// Obtener todas las secciones del salón con su rango de mesas
+$resSecciones = $conn->query("
+    SELECT s.*, 
+           MIN(m.numero_mesa) AS min_mesa, 
+           MAX(m.numero_mesa) AS max_mesa, 
+           COUNT(m.idmesa) AS cant_mesas
+    FROM seccion_mesa s
+    LEFT JOIN mesa m ON s.idseccion = m.fk_id_seccion AND m.activa = 1
+    GROUP BY s.idseccion
+    ORDER BY s.orden ASC, s.idseccion ASC
+");
+$listaSecciones = [];
+if ($resSecciones) {
+    while ($sec = $resSecciones->fetch_assoc()) {
+        $listaSecciones[] = $sec;
+    }
+}
+
+// Obtener todos los meseros oficiales (Rol 4) y sus múltiples sectores asignados
+$resMeserosStaff = $conn->query("SELECT * FROM empleado WHERE fk_id_rol = 4 AND activo = 1 ORDER BY idempleado ASC");
+$listaMeserosStaff = [];
+if ($resMeserosStaff) {
+    while ($empM = $resMeserosStaff->fetch_assoc()) {
+        $infoSecM = obtenerSeccionesMesero($conn, $empM['idempleado']);
+        $empM['sectores_ids'] = $infoSecM['ids'];
+        $empM['sectores_nombres'] = $infoSecM['nombres'];
+        $empM['sectores_texto'] = $infoSecM['texto'];
+        $listaMeserosStaff[] = $empM;
+    }
+}
 
 // Obtener catálogo de productos para la comanda
 $resCat = $conn->query("SELECT * FROM producto WHERE activo = 1 ORDER BY categoria, nombre ASC");
@@ -271,15 +410,24 @@ body {
         <img src="img/logo.png" alt="Mostaza" style="width:36px;height:36px;object-fit:contain;">
         <div>
             <h1 style="font-size:1.25rem;font-weight:900;color:var(--admin-rojo);margin:0;">
-                MOSTAZA · APP DE MESERO
+                MOSTAZA · SALÓN Y SECTORES DE MESEROS
             </h1>
             <span style="font-size:0.8rem;color:#64748B;">
                 Salón Sucursal Formosa · Mesero: <strong style="color:#0F172A;"><?= htmlspecialchars($nombreMesero) ?></strong>
+                <?php if (!empty($sectoresMeseroSesion)): ?>
+                    · Sectores: <strong style="color:var(--admin-rojo);"><?= htmlspecialchars($sectoresMeseroSesion) ?></strong>
+                <?php endif; ?>
             </span>
         </div>
     </div>
 
-    <div style="display:flex;gap:10px;align-items:center;">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <button type="button" onclick="togglePanelSectores()" class="btn-admin btn-admin-sm" style="background:#0F172A;color:#FFFFFF;border-color:#0F172A;">
+            <i class="fa-solid fa-layer-group" style="color:#FBB728;"></i> Asignar Sectores a Meseros
+        </button>
+        <button type="button" onclick="document.getElementById('modalNuevoMesero').classList.add('open')" class="btn-admin btn-admin-white btn-admin-sm">
+            <i class="fa-solid fa-user-plus" style="color:var(--admin-rojo);"></i> Nuevo Mesero
+        </button>
         <a href="index.php" class="btn-admin btn-admin-white btn-admin-sm">
             <i class="fa-solid fa-arrow-left"></i> Panel Admin
         </a>
@@ -302,13 +450,6 @@ body {
     </div>
 </div>
 
-<div style="padding:16px 20px 0;">
-    <h2 style="font-size:1.2rem;font-weight:900;color:var(--admin-dark);margin:0 0 4px;">
-        <i class="fa-solid fa-map-location-dot" style="color:var(--admin-rojo);"></i> Mapa de Mesas en Salón
-    </h2>
-    <p style="font-size:0.85rem;color:#64748B;margin:0;">Hacé clic en una mesa libre para abrir comanda y marchar a cocina, o en una mesa ocupada para ver su estado.</p>
-</div>
-
 <?php if (isset($_GET['msg'])): ?>
     <?php if ($_GET['msg'] === 'mesa_ocupada'): ?>
         <div style="background:#FEF2F2;border:1px solid #FCA5A5;color:#991B1B;padding:12px 18px;border-radius:10px;margin:14px 20px 0;font-weight:700;display:flex;align-items:center;gap:10px;">
@@ -322,8 +463,124 @@ body {
         <div style="background:#EFF6FF;border:1px solid #93C5FD;color:#1E40AF;padding:12px 18px;border-radius:10px;margin:14px 20px 0;font-weight:700;display:flex;align-items:center;gap:10px;">
             <i class="fa-solid fa-circle-check"></i> Comanda enviada a Cocina KDS exitosamente.
         </div>
+    <?php elseif ($_GET['msg'] === 'sectores_actualizados'): ?>
+        <div style="background:#DCFCE7;border:1px solid #86EFAC;color:#166534;padding:12px 18px;border-radius:10px;margin:14px 20px 0;font-weight:800;display:flex;align-items:center;gap:10px;">
+            <i class="fa-solid fa-circle-check"></i> ¡Sectores del mesero actualizados con éxito! El mesero ya puede operar todas las mesas de los sectores seleccionados en el Salón y en la App Móvil.
+        </div>
+    <?php elseif ($_GET['msg'] === 'mesero_creado'): ?>
+        <div style="background:#DCFCE7;border:1px solid #86EFAC;color:#166534;padding:12px 18px;border-radius:10px;margin:14px 20px 0;font-weight:800;display:flex;align-items:center;gap:10px;">
+            <i class="fa-solid fa-user-check"></i> ¡Nuevo mesero registrado y asignado a sus sectores correctamente!
+        </div>
+    <?php elseif ($_GET['msg'] === 'error_sin_sector'): ?>
+        <div style="background:#FEE2E2;border:1px solid #FCA5A5;color:#991B1B;padding:12px 18px;border-radius:10px;margin:14px 20px 0;font-weight:800;display:flex;align-items:center;gap:10px;">
+            <i class="fa-solid fa-triangle-exclamation"></i> Debés seleccionar al menos un sector para asignarle al mesero.
+        </div>
     <?php endif; ?>
 <?php endif; ?>
+
+<!-- ============================================================ -->
+<!-- PANEL ADMINISTRATIVO: ASIGNACIÓN MÚLTIPLE DE SECTORES A MESEROS -->
+<!-- ============================================================ -->
+<div id="panelAdminSectores" style="margin:18px 20px 6px;background:#FFFFFF;border-radius:16px;border:1.5px solid #CBD5E1;padding:20px;box-shadow:0 4px 15px rgba(0,0,0,0.04);">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;border-bottom:1px solid #E2E8F0;padding-bottom:12px;">
+        <div>
+            <h2 style="font-size:1.15rem;font-weight:900;color:#0F172A;margin:0;display:flex;align-items:center;gap:8px;">
+                <i class="fa-solid fa-users-gear" style="color:var(--admin-rojo);"></i>
+                Asignación de Sectores por Mesero (Multi-Sector)
+            </h2>
+            <p style="font-size:0.82rem;color:#64748B;margin:4px 0 0;">
+                Marcá uno o más sectores para cada mesero y presioná <strong>Guardar Sectores</strong>. El mesero tendrá permiso simultáneo en todas las secciones marcadas.
+            </p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <span class="badge badge-info" style="font-size:0.75rem;">
+                <i class="fa-solid fa-mobile-screen-button"></i> Sincronizado con App Mesero
+            </span>
+        </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(360px, 1fr));gap:16px;">
+        <?php foreach ($listaMeserosStaff as $empM): 
+            $idM = intval($empM['idempleado']);
+            $nomCompletoM = trim($empM['nombre'] . ' ' . $empM['apellido']);
+            $misIdsSec = $empM['sectores_ids'] ?? [1];
+        ?>
+        <form method="post" action="mesero.php" style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:14px;padding:16px;display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
+            <input type="hidden" name="idempleado" value="<?= $idM ?>">
+            
+            <div>
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span style="font-size:1.6rem;background:#FFFFFF;width:44px;height:44px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #E2E8F0;">
+                            <?= htmlspecialchars($empM['avatar'] ?: '🤵') ?>
+                        </span>
+                        <div>
+                            <strong style="font-size:0.98rem;color:#0F172A;display:block;"><?= htmlspecialchars($nomCompletoM) ?></strong>
+                            <span style="font-size:0.78rem;color:#64748B;"><?= htmlspecialchars($empM['email']) ?></span>
+                        </div>
+                    </div>
+                    <span class="badge" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;">
+                        <?= count($misIdsSec) ?> <?= count($misIdsSec) === 1 ? 'Sector' : 'Sectores' ?>
+                    </span>
+                </div>
+
+                <div style="font-size:0.78rem;font-weight:800;color:#475569;margin-bottom:8px;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;">
+                    <span>Sectores Habilitados:</span>
+                    <button type="button" onclick="seleccionarTodosSectores(this)" style="background:none;border:none;color:var(--admin-rojo);font-weight:800;font-size:0.74rem;cursor:pointer;text-decoration:underline;">
+                        Marcar todos
+                    </button>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <?php foreach ($listaSecciones as $sec): 
+                        $secId = intval($sec['idseccion']);
+                        $checked = in_array($secId, $misIdsSec, true);
+                        $rangoTxt = ($sec['min_mesa'] && $sec['max_mesa']) ? "Mesas {$sec['min_mesa']}-{$sec['max_mesa']}" : "{$sec['cant_mesas']} mesas";
+                    ?>
+                    <label style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:10px;background:<?= $checked ? '#FEF2F2' : '#FFFFFF' ?>;border:1.5px solid <?= $checked ? '#A30002' : '#CBD5E1' ?>;cursor:pointer;font-size:0.8rem;transition:0.15s;" onchange="actualizarEstiloCheck(this)">
+                        <input type="checkbox" name="sectores[]" value="<?= $secId ?>" <?= $checked ? 'checked' : '' ?> style="margin-top:2px;accent-color:#A30002;width:15px;height:15px;">
+                        <div style="line-height:1.25;">
+                            <strong style="display:block;color:<?= $checked ? '#A30002' : '#0F172A' ?>;font-size:0.8rem;">
+                                <?= htmlspecialchars($sec['nombre']) ?>
+                            </strong>
+                            <small style="color:#64748B;font-size:0.7rem;"><?= htmlspecialchars($rangoTxt) ?></small>
+                        </div>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid #E2E8F0;margin-top:4px;">
+                <span style="font-size:0.75rem;color:#64748B;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($empM['sectores_texto']) ?>">
+                    📍 Actual: <strong style="color:#0F172A;"><?= htmlspecialchars($empM['sectores_texto']) ?></strong>
+                </span>
+                <button type="submit" name="guardar_sectores_mesero" class="btn-admin btn-admin-red btn-admin-sm" style="padding:7px 14px;">
+                    <i class="fa-solid fa-floppy-disk"></i> Guardar Sectores
+                </button>
+            </div>
+        </form>
+        <?php endforeach; ?>
+    </div>
+</div>
+
+<div style="padding:16px 20px 0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+    <div>
+        <h2 style="font-size:1.2rem;font-weight:900;color:var(--admin-dark);margin:0 0 4px;">
+            <i class="fa-solid fa-map-location-dot" style="color:var(--admin-rojo);"></i> Mapa de Mesas en Salón
+        </h2>
+        <p style="font-size:0.85rem;color:#64748B;margin:0;">Hacé clic en una mesa libre para abrir comanda y marchar a cocina, o en una mesa ocupada para ver su estado.</p>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" class="btn-admin btn-admin-red btn-admin-sm" id="btnFiltroSec_todas" onclick="filtrarMapaPorSeccion('todas')">
+            Todas (<?= $resMesas ? $resMesas->num_rows : 0 ?>)
+        </button>
+        <?php foreach ($listaSecciones as $sec): ?>
+            <button type="button" class="btn-admin btn-admin-white btn-admin-sm" id="btnFiltroSec_<?= $sec['idseccion'] ?>" onclick="filtrarMapaPorSeccion(<?= $sec['idseccion'] ?>)">
+                <i class="fa-solid <?= htmlspecialchars($sec['icono'] ?: 'fa-chair') ?>"></i> <?= htmlspecialchars($sec['nombre']) ?>
+            </button>
+        <?php endforeach; ?>
+    </div>
+</div>
 
 <!-- MAPA DE MESAS EN SALÓN -->
 <div class="mesas-grid">
@@ -349,7 +606,7 @@ body {
             }
         }
     ?>
-    <div class="mesa-card <?= $estadoClase ?>" onclick="clickMesa(<?= $num ?>, '<?= htmlspecialchars($m['seccion_nombre'] ?? 'Salón Principal') ?>', <?= $m['capacidad'] ?? 4 ?>, <?= $estaOcupada ? 'true' : 'false' ?>, <?= $tieneComanda ? htmlspecialchars(json_encode($comanda)) : 'null' ?>)">
+    <div class="mesa-card <?= $estadoClase ?>" data-seccion="<?= intval($m['fk_id_seccion'] ?? 1) ?>" onclick="clickMesa(<?= $num ?>, '<?= htmlspecialchars($m['seccion_nombre'] ?? 'Salón Principal') ?>', <?= $m['capacidad'] ?? 4 ?>, <?= $estaOcupada ? 'true' : 'false' ?>, <?= $tieneComanda ? htmlspecialchars(json_encode($comanda)) : 'null' ?>)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <span class="mesa-num">Mesa <?= $num ?></span>
             <span class="mesa-status-badge" style="background:<?= $estaOcupada ? ($estadoClase === 'lista' ? '#FEF3C7' : '#FEE2E2') : '#DCFCE7' ?>;color:<?= $estaOcupada ? ($estadoClase === 'lista' ? '#92400E' : '#991B1B') : '#166534' ?>;">
@@ -484,18 +741,96 @@ body {
 
 <!-- Modal Login Mesero -->
 <div class="modal-comanda" id="modalLoginMesero">
-    <div class="modal-comanda-box" style="max-width:400px;padding:24px;">
-        <h3 style="color:var(--admin-rojo);margin:0 0 12px;font-size:1.3rem;font-weight:900;">🍽️ Identificación de Mesero</h3>
-        <p style="font-size:0.85rem;color:#64748B;margin-bottom:16px;">Ingresá tu nombre para registrar tu turno de atención en salón.</p>
+    <div class="modal-comanda-box" style="max-width:440px;padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h3 style="color:var(--admin-rojo);margin:0;font-size:1.25rem;font-weight:900;">🍽️ Identificación de Mesero</h3>
+            <button onclick="document.getElementById('modalLoginMesero').classList.remove('open')" style="background:none;border:none;color:#64748B;font-size:1.3rem;cursor:pointer;">✕</button>
+        </div>
+        <p style="font-size:0.85rem;color:#64748B;margin-bottom:16px;">Seleccioná un mesero oficial con sus sectores asignados o ingresá tu nombre.</p>
         
         <form method="post" action="mesero.php">
             <div class="form-group">
-                <input type="text" name="nombre_mesero" required placeholder="Ej: Lucas Benítez" class="form-control">
+                <label class="form-label">Seleccionar Mesero Oficial:</label>
+                <select name="idempleado_mesero" class="form-control" onchange="if(this.selectedIndex>0) document.getElementById('inpNomMeseroLogin').value = this.options[this.selectedIndex].getAttribute('data-nom');">
+                    <option value="0">-- Seleccionar de la nómina --</option>
+                    <?php foreach ($listaMeserosStaff as $empM): 
+                        $nComp = trim($empM['nombre'] . ' ' . $empM['apellido']);
+                    ?>
+                        <option value="<?= $empM['idempleado'] ?>" data-nom="<?= htmlspecialchars($nComp) ?>">
+                            <?= htmlspecialchars($nComp) ?> (<?= htmlspecialchars($empM['sectores_texto']) ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Nombre del Mesero en Turno:</label>
+                <input type="text" name="nombre_mesero" id="inpNomMeseroLogin" required placeholder="Ej: Franco Morales" class="form-control">
             </div>
 
             <button type="submit" name="login_mesero" class="btn-admin btn-admin-red" style="width:100%;justify-content:center;padding:12px;">
                 Entrar al Salón
             </button>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Alta de Nuevo Mesero con Múltiples Sectores -->
+<div class="modal-comanda" id="modalNuevoMesero">
+    <div class="modal-comanda-box" style="max-width:500px;padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <h3 style="color:var(--admin-rojo);margin:0;font-size:1.25rem;font-weight:900;">
+                <i class="fa-solid fa-user-plus"></i> Alta de Nuevo Mesero
+            </h3>
+            <button onclick="document.getElementById('modalNuevoMesero').classList.remove('open')" style="background:none;border:none;color:#64748B;font-size:1.3rem;cursor:pointer;">✕</button>
+        </div>
+        <p style="font-size:0.84rem;color:#64748B;margin-bottom:16px;">
+            Registrá un nuevo mesero y asignale uno o más sectores de salón desde el inicio.
+        </p>
+
+        <form method="post" action="mesero.php">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-group">
+                    <label class="form-label">Nombre *</label>
+                    <input type="text" name="nombre" required placeholder="Ej: Matías" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Apellido *</label>
+                    <input type="text" name="apellido" required placeholder="Ej: Fernández" class="form-control">
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:12px;">
+                <div class="form-group">
+                    <label class="form-label">Correo (Login App) *</label>
+                    <input type="email" name="email" required placeholder="ej: mesero3@mostaza.com.ar" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Teléfono</label>
+                    <input type="text" name="telefono" placeholder="3704-000000" class="form-control">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Sectores Asignados (Podés marcar más de uno) *</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
+                    <?php foreach ($listaSecciones as $idxS => $sec): ?>
+                    <label style="display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;background:#F8FAFC;border:1.5px solid #CBD5E1;cursor:pointer;font-size:0.82rem;">
+                        <input type="checkbox" name="sectores[]" value="<?= $sec['idseccion'] ?>" <?= $idxS === 0 ? 'checked' : '' ?> style="accent-color:#A30002;width:16px;height:16px;">
+                        <span style="font-weight:700;color:#0F172A;"><?= htmlspecialchars($sec['nombre']) ?></span>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:18px;">
+                <button type="button" onclick="document.getElementById('modalNuevoMesero').classList.remove('open')" class="btn-admin btn-admin-white" style="flex:1;justify-content:center;">
+                    Cancelar
+                </button>
+                <button type="submit" name="crear_nuevo_mesero" class="btn-admin btn-admin-red" style="flex:1.4;justify-content:center;">
+                    <i class="fa-solid fa-check"></i> Crear y Asignar Sectores
+                </button>
+            </div>
         </form>
     </div>
 </div>
@@ -636,11 +971,71 @@ function filtrarProdsModal() {
     });
 }
 
+function togglePanelSectores() {
+    const panel = document.getElementById('panelAdminSectores');
+    if (!panel) return;
+    if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        panel.scrollIntoView({ behavior: 'smooth' });
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
+function actualizarEstiloCheck(lbl) {
+    const chk = lbl.querySelector('input[type="checkbox"]');
+    const title = lbl.querySelector('strong');
+    if (!chk) return;
+    if (chk.checked) {
+        lbl.style.background = '#FEF2F2';
+        lbl.style.borderColor = '#A30002';
+        if (title) title.style.color = '#A30002';
+    } else {
+        lbl.style.background = '#FFFFFF';
+        lbl.style.borderColor = '#CBD5E1';
+        if (title) title.style.color = '#0F172A';
+    }
+}
+
+function seleccionarTodosSectores(btn) {
+    const form = btn.closest('form');
+    if (!form) return;
+    const checks = form.querySelectorAll('input[name="sectores[]"]');
+    const allChecked = Array.from(checks).every(c => c.checked);
+    checks.forEach(c => {
+        c.checked = !allChecked;
+        const lbl = c.closest('label');
+        if (lbl) actualizarEstiloCheck(lbl);
+    });
+    btn.textContent = allChecked ? 'Marcar todos' : 'Desmarcar todos';
+}
+
+function filtrarMapaPorSeccion(secId) {
+    document.querySelectorAll('[id^="btnFiltroSec_"]').forEach(b => {
+        b.classList.remove('btn-admin-red');
+        b.classList.add('btn-admin-white');
+    });
+    const btnAct = document.getElementById('btnFiltroSec_' + secId);
+    if (btnAct) {
+        btnAct.classList.remove('btn-admin-white');
+        btnAct.classList.add('btn-admin-red');
+    }
+
+    document.querySelectorAll('.mesa-card').forEach(card => {
+        if (secId === 'todas' || String(card.dataset.seccion) === String(secId)) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
 setInterval(function() {
-    if (!document.querySelector('.modal-comanda.open')) {
+    const algunInputFoco = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT');
+    if (!document.querySelector('.modal-comanda.open') && !algunInputFoco) {
         window.location.reload();
     }
-}, 12000);
+}, 15000);
 </script>
 
 </body>

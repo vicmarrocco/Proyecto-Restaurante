@@ -54,72 +54,75 @@ $paginaActiva = $paginaActiva ?? '';
         </ul>
     </nav>
 
-    <!-- Botón Buscador Toggle / Ventana Desplegable Inteligente -->
-    <div class="header-search-container" id="headerSearchContainer">
-        <button type="button" class="btn-search-toggle" id="btnSearchToggle" title="Buscar productos" aria-label="Abrir buscador">
-            <i class="fa-solid fa-magnifying-glass"></i>
-        </button>
+    <!-- Grupo Derecho: Buscador + Acciones -->
+    <div class="header-right-group">
+        <!-- Botón Buscador Toggle / Ventana Desplegable Inteligente -->
+        <div class="header-search-container" id="headerSearchContainer">
+            <button type="button" class="btn-search-toggle" id="btnSearchToggle" title="Buscar productos" aria-label="Abrir buscador">
+                <i class="fa-solid fa-magnifying-glass"></i>
+            </button>
 
-        <div class="header-search-box" id="headerSearchBox">
-            <form action="productos.php" method="GET" class="header-search-form" id="headerSearchForm">
-                <i class="fa-solid fa-magnifying-glass search-submit-icon"></i>
-                <input type="text" 
-                       name="q" 
-                       id="headerSearchInput" 
-                       class="header-search-input" 
-                       placeholder="Buscar hamburguesas, combos..." 
-                       autocomplete="off" 
-                       aria-label="Buscar productos">
-                <button type="button" class="header-search-clear-btn" id="headerSearchClear" style="display:none;" title="Borrar">&times;</button>
-            </form>
-            <div class="header-search-dropdown" id="headerSearchDropdown" style="display:none;"></div>
+            <div class="header-search-box" id="headerSearchBox">
+                <form action="productos.php" method="GET" class="header-search-form" id="headerSearchForm">
+                    <i class="fa-solid fa-magnifying-glass search-submit-icon"></i>
+                    <input type="text" 
+                           name="q" 
+                           id="headerSearchInput" 
+                           class="header-search-input" 
+                           placeholder="Buscar hamburguesas, combos..." 
+                           autocomplete="off" 
+                           aria-label="Buscar productos">
+                    <button type="button" class="header-search-clear-btn" id="headerSearchClear" style="display:none;" title="Borrar">&times;</button>
+                </form>
+                <div class="header-search-dropdown" id="headerSearchDropdown" style="display:none;"></div>
+            </div>
         </div>
-    </div>
 
-    <!-- Botones de Acción y Usuario -->
-    <div class="header-actions">
-        <!-- Botón Carrito -->
-        <a href="carrito.php" class="btn-cart-header" title="Ver Carrito de Compras">
-            <div class="cart-icon-wrap">
-                <i class="fa-solid fa-bag-shopping"></i>
-                <span class="cart-count-badge" id="headerCartCount" style="<?= $cantCarrito > 0 ? '' : 'display:none;' ?>"><?= $cantCarrito ?></span>
-            </div>
-            <div class="cart-text-wrap d-none d-sm-block">
-                <span class="cart-label">Mi Pedido</span>
-                <span class="cart-total">$<?= number_format($totalCarritoHeader, 0, ',', '.') ?></span>
-            </div>
-        </a>
-
-        <?php if ($logueado): ?>
-            <!-- Usuario Logueado -->
-            <a href="perfil.php" class="badge-club-header" title="Mis Puntos Club Mostaza">
-                <i class="fa-solid fa-crown" style="color:#FBB728;"></i>
-                <span><?= $puntosHeader ?> pts</span>
+        <!-- Botones de Acción y Usuario -->
+        <div class="header-actions">
+            <!-- Botón Carrito -->
+            <a href="carrito.php" class="btn-cart-header" title="Ver Carrito de Compras">
+                <div class="cart-icon-wrap">
+                    <i class="fa-solid fa-bag-shopping"></i>
+                    <span class="cart-count-badge" id="headerCartCount" style="<?= $cantCarrito > 0 ? '' : 'display:none;' ?>"><?= $cantCarrito ?></span>
+                </div>
+                <div class="cart-text-wrap d-none d-sm-block">
+                    <span class="cart-label">Mi Pedido</span>
+                    <span class="cart-total">$<?= number_format($totalCarritoHeader, 0, ',', '.') ?></span>
+                </div>
             </a>
 
-            <div class="user-dropdown-header">
-                <a href="perfil.php" class="btn-user-avatar" title="Mi Perfil">
-                    <i class="fa-solid fa-circle-user"></i>
-                    <span class="user-name-short d-none d-md-inline"><?= htmlspecialchars(explode(' ', $nombreUsuario)[0]) ?></span>
+            <?php if ($logueado): ?>
+                <!-- Usuario Logueado -->
+                <a href="perfil.php" class="badge-club-header" title="Mis Puntos Club Mostaza">
+                    <i class="fa-solid fa-crown" style="color:#FBB728;"></i>
+                    <span><?= $puntosHeader ?> pts</span>
                 </a>
-                <a href="logout.php" class="btn-logout-header" title="Cerrar Sesión" onclick="return confirm('¿Deseás cerrar tu sesión?');">
-                    <i class="fa-solid fa-arrow-right-from-bracket"></i>
-                </a>
-            </div>
-        <?php else: ?>
-            <!-- Usuario Invitado -->
-            <a href="login.php" class="btn-header-login">
-                <i class="fa-regular fa-user"></i> Ingresar
-            </a>
-            <a href="productos.php" class="btn-header-order d-none d-sm-inline-flex">
-                Pedir Online
-            </a>
-        <?php endif; ?>
 
-        <!-- Botón Menú Móvil (Hamburguesa) -->
-        <button type="button" class="mobile-toggle-btn" id="mobileMenuBtn" aria-label="Abrir menú">
-            <i class="fa-solid fa-bars"></i>
-        </button>
+                <div class="user-dropdown-header">
+                    <a href="perfil.php" class="btn-user-avatar" title="Mi Perfil">
+                        <i class="fa-solid fa-circle-user"></i>
+                        <span class="user-name-short d-none d-md-inline"><?= htmlspecialchars(explode(' ', $nombreUsuario)[0]) ?></span>
+                    </a>
+                    <a href="logout.php" class="btn-logout-header" title="Cerrar Sesión" onclick="return confirm('¿Deseás cerrar tu sesión?');">
+                        <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                    </a>
+                </div>
+            <?php else: ?>
+                <!-- Usuario Invitado -->
+                <a href="login.php" class="btn-header-login">
+                    <i class="fa-regular fa-user"></i> Ingresar
+                </a>
+                <a href="productos.php" class="btn-header-order d-none d-sm-inline-flex">
+                    Pedir Online
+                </a>
+            <?php endif; ?>
+
+            <!-- Botón Menú Móvil (Hamburguesa) -->
+            <button type="button" class="mobile-toggle-btn" id="mobileMenuBtn" aria-label="Abrir menú">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
     </div>
 </header>
 

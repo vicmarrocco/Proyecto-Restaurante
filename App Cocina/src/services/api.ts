@@ -30,6 +30,31 @@ try {
   }
 } catch (e) {}
 
+export function parseFechaUniversal(fechaStr: any): Date | null {
+  if (!fechaStr) return null;
+  if (fechaStr instanceof Date) return isNaN(fechaStr.getTime()) ? null : fechaStr;
+  const str = String(fechaStr).trim();
+  const dmyMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (dmyMatch) {
+    const [, d, m, y, h, min, s] = dmyMatch;
+    const date = new Date(
+      parseInt(y, 10),
+      parseInt(m, 10) - 1,
+      parseInt(d, 10),
+      h ? parseInt(h, 10) : 0,
+      min ? parseInt(min, 10) : 0,
+      s ? parseInt(s, 10) : 0
+    );
+    if (!isNaN(date.getTime())) return date;
+  }
+  const isoStr = str.replace(' ', 'T');
+  const dIso = new Date(isoStr);
+  if (!isNaN(dIso.getTime())) return dIso;
+  const dRaw = new Date(str);
+  if (!isNaN(dRaw.getTime())) return dRaw;
+  return null;
+}
+
 const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 7000): Promise<Response> => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -171,7 +196,8 @@ export const ApiService = {
       const peds = (data.pedidos || []).filter((p: any) => 
         p.estado === 'Recibido' || p.estado === 'En Cocina' || p.estado === 'En Preparación' || p.estado === 'En Preparacion'
       ).map((p: any) => {
-        const tiempoMinutos = Math.max(0, Math.round((Date.now() - new Date(p.fecha).getTime()) / 60000)) || 0;
+        const fechaObj = parseFechaUniversal(p.fecha_iso || p.fecha);
+        const tiempoMinutos = fechaObj ? Math.max(0, Math.round((Date.now() - fechaObj.getTime()) / 60000)) : 0;
         return {
           idpedido: p.idpedido,
           tipo_entrega: p.tipo_entrega || 'salon',

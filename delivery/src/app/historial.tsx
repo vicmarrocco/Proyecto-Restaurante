@@ -99,27 +99,6 @@ export default function HistoryScreen() {
     }));
   };
 
-  const rendirCajaACajero = () => {
-    const efectivo = stats?.efectivo_a_rendir_formateado || '$0';
-    Alert.alert(
-      'Rendir Efectivo a Caja',
-      `¿Confirmás la rendición de ${efectivo} en efectivo correspondiente a las entregas de hoy al cajero de Mostaza?\n\nAl confirmar se emitirá el recibo de liquidación del turno.`,
-      [
-        { text: 'Volver', style: 'cancel' },
-        {
-          text: '✅ Confirmar Rendición',
-          onPress: async () => {
-            Alert.alert(
-              '¡Rendición Exitosa!',
-              `Se registró la entrega de ${efectivo} a Caja Central de Mostaza Formosa.\n\n¡Turno liquidado correctamente!`
-            );
-            cargarDatos();
-          },
-        },
-      ]
-    );
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Topbar Header */}
@@ -154,29 +133,8 @@ export default function HistoryScreen() {
             colors={[MostazaColors.rojo]}
           />
         }>
-        {/* KPI: Métricas de Liquidación de Turno */}
+        {/* KPI: Métricas de Envíos del Repartidor */}
         <View style={styles.statsCard}>
-          <View style={styles.statMainRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.statMainLabel}>💵 EFECTIVO EN MANO A RENDIR</Text>
-              <Text style={styles.statMainValue}>
-                {stats?.efectivo_a_rendir_formateado || '$0'}
-              </Text>
-              <Text style={styles.statMainHint}>
-                Cobros de pedidos en efectivo a entregar en caja
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.btnRendir}
-              onPress={rendirCajaACajero}
-              activeOpacity={0.8}>
-              <Text style={styles.btnRendirText}>Rendir Caja</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.statDivider} />
-
           <View style={styles.statsRow}>
             <View style={styles.statSubItem}>
               <Text style={styles.statSubEmoji}>📦</Text>
@@ -288,8 +246,8 @@ export default function HistoryScreen() {
               <View key={pedido.idpedido} style={styles.historyCard}>
                 {/* Header Comanda */}
                 <View style={styles.cardHeader}>
-                  <View>
-                    <Text style={styles.orderNumber}>
+                  <View style={{ flex: 1, paddingRight: 10, minWidth: 0 }}>
+                    <Text style={styles.orderNumber} numberOfLines={1}>
                       Comanda #{pedido.idpedido}
                       {pedido.numero_pedido_usuario ? (
                         <Text style={styles.clientOrderTag}>
@@ -297,11 +255,13 @@ export default function HistoryScreen() {
                         </Text>
                       ) : null}
                     </Text>
-                    <Text style={styles.orderDateTime}>
+                    <Text style={styles.orderDateTime} numberOfLines={1} ellipsizeMode="tail">
                       🕒 {pedido.fecha.split(' ')[0]} a las {pedido.hora} hs · {pedido.sucursal_nombre || 'Mostaza Formosa Centro'}
                     </Text>
                   </View>
-                  <StatusBadge estado={pedido.estado} />
+                  <View style={{ flexShrink: 0 }}>
+                    <StatusBadge estado={pedido.estado} />
+                  </View>
                 </View>
 
                 {/* Datos del Cliente y Destino */}
@@ -628,7 +588,7 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',

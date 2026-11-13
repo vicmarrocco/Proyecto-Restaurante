@@ -23,6 +23,27 @@ if (!isset($_SESSION['usuario_id'])) {
 $idusuario = $_SESSION['usuario_id'];
 $carrito = $_SESSION['carrito'] ?? [];
 
+// Sincronizar precios actuales de la base de datos en el carrito
+if (!empty($carrito)) {
+    $idsProds = array_filter(array_map(function($it) { return intval($it['idproducto'] ?? 0); }, $carrito));
+    if (!empty($idsProds)) {
+        $resPrecios = $conn->query("SELECT idproducto, precio FROM producto WHERE idproducto IN (" . implode(',', $idsProds) . ")");
+        if ($resPrecios) {
+            $preciosDb = [];
+            while ($rp = $resPrecios->fetch_assoc()) {
+                $preciosDb[$rp['idproducto']] = floatval($rp['precio']);
+            }
+            foreach ($carrito as $k => $item) {
+                $idp = intval($item['idproducto'] ?? 0);
+                if (isset($preciosDb[$idp])) {
+                    $carrito[$k]['precio'] = $preciosDb[$idp];
+                }
+            }
+            $_SESSION['carrito'] = $carrito;
+        }
+    }
+}
+
 // Obtener datos del cliente
 $stmtU = $conn->prepare("SELECT * FROM usuario_web WHERE idusuario = ?");
 $stmtU->bind_param("i", $idusuario);
@@ -71,7 +92,7 @@ if ($usarPuntos && $puntosDisponibles > 0) {
 
 // Modalidad de entrega y costo
 $tipoEntrega = $_SESSION['tipo_entrega'] ?? 'delivery';
-$costoEnvio = ($tipoEntrega === 'delivery' && $subtotal > 0 && $subtotal < 25000) ? 1200.00 : 0.00;
+$costoEnvio = ($tipoEntrega === 'delivery' && $subtotal > 0 && $subtotal < 25000) ? 1.00 : 0.00;
 
 // Propina
 $propData = $_SESSION['propina'] ?? ['tipo' => 'porcentaje', 'valor' => 0];

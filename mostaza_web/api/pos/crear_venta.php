@@ -251,6 +251,11 @@ try {
 
     $conn->commit();
 
+    $totalFormateado = '$' . number_format($total, 0, ',', '.');
+    $vueltoFormateado = '$' . number_format($vuelto, 0, ',', '.');
+    $netoGravado = round($total / 1.21, 2);
+    $iva21 = round($total - $netoGravado, 2);
+
     echo json_encode([
         'ok' => true,
         'mensaje' => "¡Venta facturada y comanda registrada en $terminalNombre!",
@@ -261,8 +266,14 @@ try {
         'cae' => $facturaFiscal['cae'] ?? '74123456789012',
         'cae_vto' => $facturaFiscal['cae_vto'] ?? date('d/m/Y', strtotime('+10 days')),
         'total' => $total,
+        'total_formateado' => $totalFormateado,
+        'neto_gravado' => $netoGravado,
+        'neto_gravado_formateado' => '$' . number_format($netoGravado, 0, ',', '.'),
+        'iva_21' => $iva21,
+        'iva_21_formateado' => '$' . number_format($iva21, 0, ',', '.'),
         'paga_con' => $pagaCon,
         'vuelto' => $vuelto,
+        'vuelto_formateado' => $vueltoFormateado,
         'items' => $itemsValidados,
         'metodo_pago' => $metodoPago,
         'mp_payment_id' => $mpPaymentId,

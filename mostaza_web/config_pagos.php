@@ -40,8 +40,8 @@ if (!defined('BANCO_TIPO_CUENTA')) define('BANCO_TIPO_CUENTA', 'Cuenta Mercado P
 // Podés configurar tus claves reales en el archivo .env en la raíz del proyecto o desde el panel Admin:
 // MP_PUBLIC_KEY=APP_USR-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 // MP_ACCESS_TOKEN=APP_USR-xxxxxxxxxxxxxxxx-xxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-xxxxxxxxx
-if (!defined('MP_PUBLIC_KEY'))     define('MP_PUBLIC_KEY', getenv('MP_PUBLIC_KEY') ?: 'APP_USR-91a17578-4761-4dcf-8688-e008b5133671');
-if (!defined('MP_ACCESS_TOKEN'))   define('MP_ACCESS_TOKEN', getenv('MP_ACCESS_TOKEN') ?: 'APP_USR-4635022272465011-110307-c67a0118028e752d15709a5b1c68db80-3799849874');
+if (!defined('MP_PUBLIC_KEY'))     define('MP_PUBLIC_KEY', getenv('MP_PUBLIC_KEY') ?: '');
+if (!defined('MP_ACCESS_TOKEN'))   define('MP_ACCESS_TOKEN', getenv('MP_ACCESS_TOKEN') ?: '');
 if (!defined('MP_SANDBOX_MODE'))   define('MP_SANDBOX_MODE', getenv('MP_SANDBOX_MODE') !== false ? filter_var(getenv('MP_SANDBOX_MODE'), FILTER_VALIDATE_BOOLEAN) : (strpos(MP_ACCESS_TOKEN, 'TEST-') === 0));
 if (!defined('MP_LINK_PAGO'))      define('MP_LINK_PAGO', getenv('MP_LINK_PAGO') ?: 'https://link.mercadopago.com.ar/gomez16mp');
 
@@ -69,7 +69,7 @@ if (!function_exists('crearPreferenciaMercadoPago')) {
     /**
      * Crea una preferencia de pago real en Mercado Pago (Checkout Pro)
      */
-    function crearPreferenciaMercadoPago($items, $externalReference, $payer = [], $backUrls = [], $costoEnvio = 0, $descuentoTotal = 0) {
+    function crearPreferenciaMercadoPago($items, $externalReference, $payer = [], $backUrls = [], $costoEnvio = 0, $descuentoTotal = 0, $notificationUrl = '') {
         if (!mpTieneCredencialesReales()) {
             return [
                 'ok' => false,
@@ -127,13 +127,10 @@ if (!function_exists('crearPreferenciaMercadoPago')) {
             'binary_mode'          => true
         ];
 
-        if (!empty($payer['email'])) {
-            // Usar el Comprador de Prueba Oficial registrado en la API de Mercado Pago (MLA)
-            // para que coincida con el vendedor de prueba (test_user):
-            $emailPayer = 'test_user_4298537724830968734@testuser.com';
-            $payload['payer'] = [
-                'email' => $emailPayer
-            ];
+        $testPayerEmail = getenv('MP_TEST_PAYER_EMAIL');
+        $emailPayer = ($testPayerEmail !== false && $testPayerEmail !== '') ? $testPayerEmail : ($payer['email'] ?? '');
+        if (!empty($emailPayer) && $emailPayer !== 'none') {
+            $payload['payer'] = ['email' => $emailPayer];
         }
 
         if (!empty($backUrls)) {
@@ -144,6 +141,11 @@ if (!function_exists('crearPreferenciaMercadoPago')) {
                 $payload['back_urls'] = $backUrls;
                 $payload['auto_return'] = 'approved';
             }
+        }
+
+        if (!empty($notificationUrl) && strpos($notificationUrl, 'https://') === 0
+            && !preg_match('/^https?:\/\/(localhost|127\.|192\.168\.|10\.)/i', $notificationUrl)) {
+            $payload['notification_url'] = $notificationUrl;
         }
 
         $ch = curl_init('https://api.mercadopago.com/checkout/preferences');
@@ -157,7 +159,7 @@ if (!function_exists('crearPreferenciaMercadoPago')) {
             ],
             CURLOPT_POSTFIELDS     => json_encode($payload),
             CURLOPT_TIMEOUT        => 12,
-            CURLOPT_SSL_VERIFYPEER => false
+            CURLOPT_SSL_VERIFYPEER => true
         ]);
 
         $response = curl_exec($ch);
@@ -227,7 +229,7 @@ if (!function_exists('consultarPagoMercadoPagoApi')) {
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_HTTPHEADER     => $headers,
                 CURLOPT_TIMEOUT        => 10,
-                CURLOPT_SSL_VERIFYPEER => false
+                CURLOPT_SSL_VERIFYPEER => true
             ]);
             $res = curl_exec($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -243,6 +245,7 @@ if (!function_exists('consultarPagoMercadoPagoApi')) {
                         'pagado'         => ($status === 'approved'),
                         'status'         => $status,
                         'payment_id'     => strval($pData['id']),
+                        'external_reference' => $pData['external_reference'] ?? '',
                         'monto'          => floatval($pData['transaction_amount'] ?? 0),
                         'metodo_detalle' => ($pData['payment_type_id'] ?? 'account_money') . ' (' . ($pData['payment_method_id'] ?? 'mp') . ')'
                     ];
@@ -258,7 +261,7 @@ if (!function_exists('consultarPagoMercadoPagoApi')) {
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_HTTPHEADER     => $headers,
                 CURLOPT_TIMEOUT        => 10,
-                CURLOPT_SSL_VERIFYPEER => false
+                CURLOPT_SSL_VERIFYPEER => true
             ]);
             $res = curl_exec($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -275,6 +278,7 @@ if (!function_exists('consultarPagoMercadoPagoApi')) {
                             'pagado'         => true,
                             'status'         => 'approved',
                             'payment_id'     => strval($pItem['id']),
+                            'external_reference' => $pItem['external_reference'] ?? '',
                             'monto'          => floatval($pItem['transaction_amount'] ?? 0),
                             'metodo_detalle' => ($pItem['payment_type_id'] ?? 'account_money') . ' (' . ($pItem['payment_method_id'] ?? 'mp') . ')'
                         ];
@@ -291,7 +295,7 @@ if (!function_exists('consultarPagoMercadoPagoApi')) {
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_HTTPHEADER     => $headers,
                 CURLOPT_TIMEOUT        => 10,
-                CURLOPT_SSL_VERIFYPEER => false
+                CURLOPT_SSL_VERIFYPEER => true
             ]);
             $res = curl_exec($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -311,6 +315,7 @@ if (!function_exists('consultarPagoMercadoPagoApi')) {
                             'pagado'         => true,
                             'status'         => 'approved',
                             'payment_id'     => strval($pItem['id']),
+                            'external_reference' => $pItem['external_reference'] ?? '',
                             'monto'          => $montoPago,
                             'metodo_detalle' => ($pItem['payment_type_id'] ?? 'account_money') . ' (' . ($pItem['payment_method_id'] ?? 'mp') . ')'
                         ];
@@ -324,6 +329,56 @@ if (!function_exists('consultarPagoMercadoPagoApi')) {
             'modo_real' => true,
             'pagado'    => false,
             'status'    => 'pending'
+        ];
+    }
+}
+
+if (!function_exists('mpVerificarPagoParaPedido')) {
+    /**
+     * Verificación ESTRICTA contra la API de Mercado Pago antes de dar un pedido por pagado.
+     * Exige: pago 'approved', external_reference == la de esta sesión y monto >= esperado.
+     * Nunca confiar en datos que vengan del navegador.
+     */
+    function mpVerificarPagoParaPedido($paymentId, $externalRefEsperada, $montoEsperado) {
+        if (!mpTieneCredencialesReales()) {
+            return ['ok' => false, 'error' => 'Mercado Pago no está configurado en el servidor.'];
+        }
+        if (empty($externalRefEsperada)) {
+            return ['ok' => false, 'error' => 'No hay una orden de pago iniciada.'];
+        }
+        $headers = ['Authorization: Bearer ' . trim(MP_ACCESS_TOKEN), 'Accept: application/json'];
+        $get = function ($url) use ($headers) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => $headers,
+                                    CURLOPT_TIMEOUT => 10, CURLOPT_SSL_VERIFYPEER => true]);
+            $res = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            return [$code, $res ? json_decode($res, true) : null];
+        };
+
+        $pago = null;
+        $id = preg_replace('/\D/', '', (string)$paymentId);
+        if ($id !== '' && strlen($id) >= 6) {
+            [$code, $d] = $get("https://api.mercadopago.com/v1/payments/{$id}");
+            if ($code === 200 && !empty($d['id'])) $pago = $d;
+        }
+        if (!$pago) {
+            [$code, $d] = $get('https://api.mercadopago.com/v1/payments/search?sort=date_created&criteria=desc&external_reference=' . urlencode($externalRefEsperada));
+            foreach (($d['results'] ?? []) as $r) {
+                if (($r['status'] ?? '') === 'approved') { $pago = $r; break; }
+            }
+        }
+        if (!$pago)                                   return ['ok' => false, 'error' => 'No encontramos un pago de Mercado Pago para esta orden.'];
+        if (($pago['status'] ?? '') !== 'approved')   return ['ok' => false, 'error' => 'El pago todavía no figura como aprobado (' . ($pago['status'] ?? 'desconocido') . ').'];
+        if (($pago['external_reference'] ?? '') !== $externalRefEsperada) return ['ok' => false, 'error' => 'El pago no corresponde a esta orden.'];
+        if (floatval($pago['transaction_amount'] ?? 0) + 0.5 < floatval($montoEsperado)) return ['ok' => false, 'error' => 'El monto abonado es menor al total del pedido.'];
+
+        return [
+            'ok'             => true,
+            'payment_id'     => strval($pago['id']),
+            'monto'          => floatval($pago['transaction_amount']),
+            'metodo_detalle' => ($pago['payment_type_id'] ?? 'mp') . ' (' . ($pago['payment_method_id'] ?? 'mp') . ')',
         ];
     }
 }
@@ -404,5 +459,90 @@ if (!function_exists('generarQrUrlMercadoPago')) {
     function generarQrUrlMercadoPago($monto = 0, $size = 200) {
         $emvPayload = generarPayloadEmvcoMercadoPago(BANCO_ALIAS, BANCO_CVU, $monto, BANCO_TITULAR, 'FORMOSA');
         return "https://api.qrserver.com/v1/create-qr-code/?size={$size}x{$size}&margin=10&data=" . urlencode($emvPayload);
+    }
+}
+
+if (!function_exists('reembolsarPagoMercadoPago')) {
+    /**
+     * Reembolsa un pago en Mercado Pago mediante la API oficial de Refunds
+     * POST https://api.mercadopago.com/v1/payments/{payment_id}/refunds
+     */
+    function reembolsarPagoMercadoPago($paymentId, $monto = null, $motivo = 'Cancelación de pedido') {
+        $cleanId = preg_replace('/\D/', '', $paymentId);
+
+        if (!mpTieneCredencialesReales() || empty($cleanId) || strlen($cleanId) < 6) {
+            // Modo simulación / pruebas locales sin ID numérico real de pasarela
+            return [
+                'ok'         => true,
+                'modo_real'  => false,
+                'refund_id'  => 'SIM-REF-' . mt_rand(100000, 999999),
+                'status'     => 'approved',
+                'monto'      => $monto ?: 0,
+                'mensaje'    => 'Reembolso simulado exitosamente en modo demostración/pruebas.'
+            ];
+        }
+
+        $headers = [
+            'Authorization: Bearer ' . trim(MP_ACCESS_TOKEN),
+            'X-Idempotency-Key: ' . bin2hex(random_bytes(16)),
+            'Content-Type: application/json',
+            'Accept: application/json'
+        ];
+
+        $payload = [];
+        if ($monto !== null && floatval($monto) > 0) {
+            $payload['amount'] = round(floatval($monto), 2);
+        }
+
+        $url = "https://api.mercadopago.com/v1/payments/{$cleanId}/refunds";
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode($payload),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER     => $headers,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_SSL_VERIFYPEER => false
+        ]);
+
+        $res = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+
+        if ($err) {
+            return [
+                'ok'        => false,
+                'modo_real' => true,
+                'error'     => "Error de conexión con Mercado Pago: $err"
+            ];
+        }
+
+        $data = json_decode($res, true) ?: [];
+
+        if (in_array($httpCode, [200, 201]) && !empty($data['id'])) {
+            return [
+                'ok'         => true,
+                'modo_real'  => true,
+                'refund_id'  => strval($data['id']),
+                'status'     => $data['status'] ?? 'approved',
+                'monto'      => floatval($data['amount'] ?? ($monto ?: 0)),
+                'detalle'    => $data
+            ];
+        }
+
+        // Si Mercado Pago responde con error específico
+        $msgError = $data['message'] ?? ($data['error'] ?? 'No se pudo procesar el reembolso en Mercado Pago');
+        if (!empty($data['cause'][0]['description'])) {
+            $msgError .= ' (' . $data['cause'][0]['description'] . ')';
+        }
+
+        return [
+            'ok'        => false,
+            'modo_real' => true,
+            'http_code' => $httpCode,
+            'error'     => $msgError,
+            'detalle'   => $data
+        ];
     }
 }

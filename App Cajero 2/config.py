@@ -3,11 +3,26 @@ Mostaza POS - Configuración General
 Terminal de Punto de Venta para Cajeros
 """
 
-# URLs de la API REST central (detecta automáticamente el host local)
+# URLs de la API REST central (detecta automáticamente el host local y la IP activa de la red)
+import socket
+
+def _obtener_ip_red():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+_IP_LAN_ACTIVA = _obtener_ip_red()
+
 API_BASE_URLS = [
-    "http://192.168.0.19/PROYECTO_REST/mostaza_web/api",
     "http://localhost/PROYECTO_REST/mostaza_web/api",
     "http://127.0.0.1/PROYECTO_REST/mostaza_web/api",
+    f"http://{_IP_LAN_ACTIVA}/PROYECTO_REST/mostaza_web/api",
+    "http://192.168.1.237/PROYECTO_REST/mostaza_web/api",
     "http://localhost/osi/mostaza_web/api",
     "http://127.0.0.1/osi/mostaza_web/api"
 ]
@@ -35,12 +50,12 @@ COLOR_BLUE_BG = "#EFF6FF"
 FONT_FAMILY = "Segoe UI"
 
 # ============================================================
-# IDENTIFICACIÓN DE TERMINAL POS (CAJA 2)
+# IDENTIFICACIÓN DE TERMINAL POS (CAJA 1)
 # ============================================================
-TERMINAL_NUMERO = 2
-TERMINAL_NOMBRE = "Caja 2 - Express / Salón"
-TERMINAL_PV = "0002"
-TERMINAL_BADGE_COLOR = "#D4930A"
+TERMINAL_NUMERO = 1
+TERMINAL_NOMBRE = "Caja 1 - Principal / Mostrador"
+TERMINAL_PV = "0001"
+TERMINAL_BADGE_COLOR = "#A30002"
 
 # ============================================================
 # CONFIGURACIÓN DE PANTALLA Y MODO KIOSCO (FULLSCREEN POS)
