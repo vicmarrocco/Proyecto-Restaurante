@@ -336,14 +336,18 @@ export default function KdsScreen() {
                       <TouchableOpacity
                         style={[styles.btnAction, styles.btnTomar]}
                         onPress={() => handleTomarComanda(c)}>
-                        <Text style={styles.btnTomarTxt}>👨‍🍳 Tomar y Preparar</Text>
+                        <Text style={styles.btnTomarTxt} numberOfLines={1} adjustsFontSizeToFit>
+                          👨‍🍳 Tomar y Preparar
+                        </Text>
                       </TouchableOpacity>
                     ) : (
                       <>
                         <TouchableOpacity
                           style={[styles.btnAction, styles.btnReady]}
                           onPress={() => handleMarcarLista(c.idpedido)}>
-                          <Text style={styles.btnReadyTxt}>✅ ¡MARCAR LISTO!</Text>
+                          <Text style={styles.btnReadyTxt} numberOfLines={1} adjustsFontSizeToFit>
+                            ✅ ¡MARCAR LISTO!
+                          </Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -560,17 +564,17 @@ const styles = StyleSheet.create({
     color: '#B45309',
     letterSpacing: 0.2,
   },
-  itemsBox: { backgroundColor: '#F8FAFC', borderRadius: 10, padding: 10, marginTop: 8, minHeight: 90, borderWidth: 1, borderColor: '#F1F5F9' },
+  itemsBox: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 10, padding: 10, marginTop: 8, minHeight: 90, borderWidth: 1, borderColor: '#F1F5F9' },
   itemRow: { marginBottom: 6 },
   itemTxt: { color: '#0F172A', fontSize: 12, fontWeight: '700' },
   modTxt: { color: '#B45309', fontSize: 10, fontStyle: 'italic', marginTop: 1 },
-  actions: { flexDirection: 'row', gap: 6, marginTop: 10 },
-  btnAction: { paddingVertical: 10, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  actions: { flexDirection: 'row', gap: 6, marginTop: 10, alignItems: 'center' },
+  btnAction: { height: 42, paddingHorizontal: 6, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   btnTomar: { flex: 1, backgroundColor: MostazaColors.amarillo },
-  btnTomarTxt: { color: '#0F172A', fontWeight: '900', fontSize: 12 },
+  btnTomarTxt: { color: '#0F172A', fontWeight: '900', fontSize: 11 },
   btnReady: { flex: 1, backgroundColor: '#10B981' },
-  btnReadyTxt: { color: '#FFFFFF', fontWeight: '900', fontSize: 12 },
-  btnCancel: { width: 36, backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FECACA' },
+  btnReadyTxt: { color: '#FFFFFF', fontWeight: '900', fontSize: 11 },
+  btnCancel: { width: 38, backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FECACA' },
   btnCancelTxt: { color: '#DC2626', fontWeight: '900', fontSize: 14 },
 
   // Modal Ticket Rendimiento

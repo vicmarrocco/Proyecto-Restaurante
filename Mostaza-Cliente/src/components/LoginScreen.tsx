@@ -11,7 +11,7 @@ type Modo = 'login' | 'registro';
 export default function LoginScreen({ motivo }: { motivo?: string }) {
   const { login } = useAuth();
   const insets = useSafeAreaInsets();
-  const bottomSafe = Platform.OS === 'web' ? 0 : Math.max(insets.bottom, 20);
+  const bottomSafe = Platform.OS === 'web' ? 0 : Math.min(insets.bottom, 8);
   const [modo, setModo] = useState<Modo>('login');
   const [paso, setPaso] = useState<'email' | 'codigo'>('email');
   const [f, setF] = useState({ nombre: '', apellido: '', email: '', telefono: '', direccion: '' });

@@ -16,7 +16,7 @@ export default function TabsLayout() {
   const { totalItems } = useCart();
   const [activosCount, setActivosCount] = useState(0);
   const insets = useSafeAreaInsets();
-  const bottomSafe = Platform.OS === 'web' ? 0 : Math.max(insets.bottom, Platform.OS === 'android' ? 44 : 16);
+  const bottomSafe = Platform.OS === 'web' ? 0 : Math.min(insets.bottom, 8);
 
   const checkActivos = useCallback(async () => {
     if (!usuario || !ApiService.hasToken()) {
@@ -45,9 +45,9 @@ export default function TabsLayout() {
           backgroundColor: C.white,
           borderTopColor: C.border,
           borderTopWidth: 1,
-          height: (Platform.OS === 'web' ? 65 : 60) + bottomSafe,
-          paddingBottom: 8 + bottomSafe,
-          paddingTop: 6,
+          height: (Platform.OS === 'web' ? 65 : 56) + bottomSafe,
+          paddingBottom: 4 + bottomSafe,
+          paddingTop: 4,
           elevation: 8,
         },
         tabBarLabelStyle: { fontSize: 10, fontWeight: '800' },

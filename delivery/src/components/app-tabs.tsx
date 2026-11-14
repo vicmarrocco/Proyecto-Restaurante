@@ -3,13 +3,16 @@
 // Barra de navegación inferior móvil para Expo
 // ============================================================
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MostazaColors } from '@/constants/Colors';
 
 export default function AppTabs() {
   const router = useRouter();
   const pathname = usePathname();
+  const insets = useSafeAreaInsets();
+  const bottomSafe = Platform.OS === 'web' ? 0 : Math.min(insets.bottom, 8);
 
   const tabs = [
     { name: 'Disponibles', path: '/', icon: '📦' },
@@ -22,7 +25,7 @@ export default function AppTabs() {
   }
 
   return (
-    <View style={styles.tabBar}>
+    <View style={[styles.tabBar, { height: 56 + bottomSafe, paddingBottom: 4 + bottomSafe }]}>
       {tabs.map((t) => {
         const isActive = pathname === t.path;
         return (
@@ -42,18 +45,13 @@ export default function AppTabs() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 65,
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
-    paddingBottom: 6,
+    paddingTop: 6,
     zIndex: 999,
     elevation: 8,
     shadowColor: '#000',

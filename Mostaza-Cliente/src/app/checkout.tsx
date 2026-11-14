@@ -44,7 +44,7 @@ export default function CheckoutScreen() {
   const { usuario, refresh, setUsuario } = useAuth();
   const { items, subtotal, clear } = useCart();
   const insets = useSafeAreaInsets();
-  const bottomSafe = Platform.OS === 'web' ? 0 : Math.max(insets.bottom, Platform.OS === 'android' ? 44 : 16);
+  const bottomSafe = Platform.OS === 'web' ? 0 : Math.min(insets.bottom, 8);
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [nombreCliente, setNombreCliente] = useState('Cliente Mostaza');

@@ -5,6 +5,7 @@
 import React, { useEffect } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Slot, useRouter, usePathname, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import AppTabs from '@/components/app-tabs';
@@ -49,9 +50,11 @@ function DeliveryGate() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <DeliveryGate />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <DeliveryGate />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 

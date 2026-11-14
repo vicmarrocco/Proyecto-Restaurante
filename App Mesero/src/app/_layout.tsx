@@ -1,12 +1,15 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Text, Platform, View, ActivityIndicator } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MostazaColors } from '@/constants/Colors';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import LoginScreen from '@/components/LoginScreen';
 
 function MeseroGate() {
   const { isAuthenticated, isLoading } = useAuth();
+  const insets = useSafeAreaInsets();
+  const bottomSafe = Platform.OS === 'web' ? 0 : Math.min(insets.bottom, 8);
 
   if (isLoading) {
     return (
@@ -30,9 +33,9 @@ function MeseroGate() {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E2E8F0',
           borderTopWidth: 1,
-          height: Platform.OS === 'web' ? 65 : 60,
-          paddingBottom: Platform.OS === 'web' ? 8 : 6,
-          paddingTop: 6,
+          height: (Platform.OS === 'web' ? 65 : 56) + bottomSafe,
+          paddingBottom: (Platform.OS === 'web' ? 8 : 4) + bottomSafe,
+          paddingTop: 4,
           elevation: 8,
           shadowColor: '#000',
           shadowOpacity: 0.05,
@@ -92,8 +95,10 @@ function MeseroGate() {
 
 export default function AppLayout() {
   return (
-    <AuthProvider>
-      <MeseroGate />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <MeseroGate />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

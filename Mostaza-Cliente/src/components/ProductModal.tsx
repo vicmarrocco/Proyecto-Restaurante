@@ -12,7 +12,7 @@ interface Props { producto: Producto | null; onClose: () => void; }
 export default function ProductModal({ producto, onClose }: Props) {
   const { add } = useCart();
   const insets = useSafeAreaInsets();
-  const bottomSafe = Platform.OS === 'web' ? 0 : Math.max(insets.bottom, Platform.OS === 'android' ? 44 : 16);
+  const bottomSafe = Platform.OS === 'web' ? 0 : Math.min(insets.bottom, 8);
   const [cantidad, setCantidad] = useState(1);
   const [tamano, setTamano] = useState<string | undefined>();
   const [notas, setNotas] = useState('');
